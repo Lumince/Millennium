@@ -213,6 +213,7 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/vendor/websocketpp
   ${CMAKE_SOURCE_DIR}/vendor/crow/include
   ${CMAKE_SOURCE_DIR}/vendor/ini/src
+  ${CMAKE_SOURCE_DIR}/vendor/imgui/include
 )
 
 add_compile_definitions(
@@ -248,6 +249,13 @@ set(SOURCE_FILES
   "src/sys/sysfs.cc"
   "src/sys/settings.cc"
   "src/sys/env.cc"
+  "vendor/imgui/src/imgui.cpp"
+  "vendor/imgui/src/imgui_demo.cpp"
+  "vendor/imgui/src/imgui_draw.cpp"
+  "vendor/imgui/src/imgui_tables.cpp"
+  "vendor/imgui/src/imgui_widgets.cpp"
+  "vendor/imgui/src/imgui_impl_glfw.cpp"
+  "vendor/imgui/src/imgui_impl_opengl3.cpp"
 )
 
 if(WIN32)
@@ -301,8 +309,18 @@ if(WINDRES)
   target_link_libraries(Millennium ${CMAKE_BINARY_DIR}/version.o)
 endif()
 
+find_package(Freetype REQUIRED)
+find_package(Stb REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glad CONFIG REQUIRED)
 find_package(CURL REQUIRED) # used for web requests.
-target_link_libraries(Millennium CURL::libcurl)
+target_link_libraries(Millennium 
+  CURL::libcurl         
+  glfw
+  gdi32
+  glad::glad
+  opengl32
+)
 
 if(WIN32)
   target_link_libraries(Millennium wsock32 Iphlpapi DbgHelp)

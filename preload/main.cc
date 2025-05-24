@@ -234,7 +234,7 @@ void LoadMillennium()
 const void BootstrapMillennium(HINSTANCE hinstDLL) 
 {
     const std::string strSteamPath = GetSteamPath();
-    AllocateDevConsole();
+    // AllocateDevConsole();
 
     Print("Starting Bootstrapper@{}", MILLENNIUM_VERSION);
 

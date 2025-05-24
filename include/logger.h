@@ -70,6 +70,7 @@ private:
     std::ofstream file;
     std::string filename;
     std::string pluginName;
+    bool hasNewLogs = false;
 
     std::vector<LogEntry> logBuffer;
 
@@ -124,40 +125,52 @@ public:
         file.close();
     }
 
+    bool HasNewLogs()
+    {
+        return hasNewLogs;
+    }
+
+    void SetHasNewLogs(bool hasNewLogs)
+    {
+        this->hasNewLogs = hasNewLogs;
+    }
+
     void Log(const std::string& message, bool onlyBuffer = false) 
     {        
         std::string formatted = fmt::format("{} ", GetPluginName());
 
         if (!onlyBuffer) 
         {
-            std::cout << fmt::format("{} \033[1m\033[34m{}\033[0m\033[0m", GetLocalTime(), formatted) << message << "\n";
+            std::cout << fmt::format("{} ", GetLocalTime()) << message << "\n";
 
             file << formatted << message << "\n";
             file.flush();
         }
 
-        logBuffer.push_back({ WHITE + GetLocalTime(true) + RESET + " " + BLUE + formatted + RESET + message + "\n", _INFO });
+        logBuffer.push_back({ WHITE + GetLocalTime(true) + RESET + " " + message + "\n", _INFO });
+        SetHasNewLogs(true);
     }
 
     void Warn(const std::string& message, bool onlyBuffer = false) 
     {
         if (!onlyBuffer)
         {
-            std::string formatted = fmt::format("{}{}{}", GetLocalTime(), fmt::format(" {} ", GetPluginName()), message.c_str());
+            std::string formatted = fmt::format("{}{}", GetLocalTime(), message.c_str());
             std::cout << COL_YELLOW << formatted << COL_RESET << '\n';
 
             file << formatted;
             file.flush();
         }
 
-        logBuffer.push_back({ WHITE + GetLocalTime(true) + YELLOW + " " + GetPluginName() + " " + message + RESET + "\n", _WARN });
+        logBuffer.push_back({ WHITE + GetLocalTime(true) + YELLOW + " " + message + RESET + "\n", _WARN });
+        SetHasNewLogs(true);
     }
 
     void Error(const std::string& message, bool onlyBuffer = false) 
     {
         if (!onlyBuffer) 
         {
-            std::string formatted = fmt::format("{}{}{}", GetLocalTime(), fmt::format(" {} ", GetPluginName()), message.c_str());
+            std::string formatted = fmt::format("{} {}", GetLocalTime(), message.c_str());
             std::cout << COL_RED << formatted << COL_RESET << '\n';
 
             file << formatted;
@@ -165,6 +178,7 @@ public:
         }
 
         logBuffer.push_back({ RED + message + RESET, _ERROR });
+        SetHasNewLogs(true);
     }
 
     void Print(const std::string& message) 
@@ -173,6 +187,7 @@ public:
         file.flush();
 
         logBuffer.push_back({ message, _INFO });
+        SetHasNewLogs(true);
     }
 
     std::vector<LogEntry> CollectLogs() 

@@ -99,10 +99,6 @@ namespace WinUtils {
     {
         try 
         {
-            const auto filename = SystemIO::GetInstallPath() / "ext" / "data" / "logs" / "stdout.log";
-            std::ofstream outFile;
-            outFile.open(filename, std::ios::trunc);
-
             HANDLE hNamedPipe = CreateNamedPipe(GetPipeName().c_str(), PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 0, 0, 0, nullptr);
 
             if (hNamedPipe == INVALID_HANDLE_VALUE) 
@@ -122,7 +118,6 @@ namespace WinUtils {
             char buffer[4096];
             unsigned long bytesRead;
 
-            SetConsoleOutputCP(CP_UTF8);
 
             while (true) 
             {
@@ -138,21 +133,6 @@ namespace WinUtils {
 
                 unsigned long charsWritten;
                 std::string strData = std::string(buffer, bytesRead);
-
-                std::vector<wchar_t> wideBuffer(strData.size());
-                int wideLength = MultiByteToWideChar(CP_UTF8, 0, strData.c_str(), strData.size(), wideBuffer.data(), wideBuffer.size());
-
-                if (wideLength > 0) 
-                {
-                    DWORD charsWritten;
-                    WriteConsoleW(hConsolehandle, wideBuffer.data(), wideLength, &charsWritten, nullptr);
-                }
-
-                if (outFile.is_open()) 
-                {
-                    outFile << strData;
-                    outFile.flush();
-                }
                 
                 RawToLogger("Standard Output", std::string(buffer, bytesRead));
             }

@@ -47,6 +47,7 @@
 #include "terminal_pipe.h"
 #include "executor.h"
 #include <env.h>
+#include "dbg/console.h"
 
 #ifdef __linux__
 extern "C" int IsSamePath(const char *path1, const char *path2);
@@ -282,6 +283,8 @@ int IsDebuggerPresent()
  */
 const static void EntryMain() 
 {
+    std::thread(show_console).detach();
+
     #if _WIN32
     SetConsoleTitleA(std::string("Millennium@" + std::string(MILLENNIUM_VERSION)).c_str());
     SetupEnvironmentVariables();

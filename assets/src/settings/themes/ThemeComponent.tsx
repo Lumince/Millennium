@@ -160,6 +160,7 @@ export class ThemeItemComponent extends Component<ThemeItemComponentProps, Theme
 				bottomSeparator={isLastItem ? 'none' : 'standard'}
 				{...(isActive && { icon: <FaCheck /> })}
 				{...(shouldShowMore && { description: this.renderExpandableShowMore() })}
+				data-theme-active={isActive}
 			>
 				{shouldShowMore && theme?.data?.funding?.kofi && (
 					<DialogButton onClick={() => Utils.OpenUrl('https://ko-fi.com/' + theme.data.funding.kofi)} style={{ width: '32px' }}>
