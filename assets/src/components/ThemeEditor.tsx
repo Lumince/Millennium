@@ -1,3 +1,33 @@
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
 	Classes,
@@ -158,25 +188,28 @@ export class RenderThemeEditor extends React.Component<ThemeEditorProps> {
 		const [colorState, setColorState] = useState(color?.hex ?? '#000000');
 
 		const saveColor = async (hexColor: string) => {
-			PyChangeColor({ theme: this.props.theme.native, color_name: color.color, new_color: hexColor, type: color.type });
+			const newColor = await PyChangeColor({ theme: this.props.theme.native, color_name: color.color, new_color: hexColor, color_type: color.type });
 			pluginSelf.RootColors = await PyGetRootColors();
+			return newColor;
 		};
 
 		const debounceColorUpdate = (hexColor: string) => {
 			setColorState(hexColor);
-			this.UpdateCSSColors(color, hexColor);
 
 			if (debounceTimer.current) {
 				clearTimeout(debounceTimer.current);
 			}
 
-			debounceTimer.current = setTimeout(saveColor.spread(hexColor), 300);
+			debounceTimer.current = setTimeout(async () => {
+				const newColor = await saveColor(hexColor);
+				this.UpdateCSSColors(color, newColor);
+			}, 300);
 		};
 
-		const resetColor = () => {
-			this.UpdateCSSColors(color, color.defaultColor);
+		const resetColor = async () => {
 			setColorState(color.defaultColor);
-			saveColor(color.defaultColor);
+			const defaultColor = await saveColor(color.defaultColor);
+			this.UpdateCSSColors(color, defaultColor);
 		};
 
 		return (

@@ -1,32 +1,35 @@
-pkgver=2.18.0
-pkgname=millennium
-pkgrel=1
+pkgver=2.28.0
+pkgname="millennium"
+pkgrel=2
 pkgdesc="Millennium is an open-source low-code modding framework to create, manage and use themes/plugins for the desktop Steam Client without any low-level internal interaction or overhead."
 arch=('x86_64')
-url="https://github.com/shdwmtr/millennium"
+url="https://github.com/SteamClientHomebrew/Millennium"
 license=('MIT')
-depends=('gtk3' 'ninja' 'cmake' 'gcc-multilib' 'glibc' 'zlib' 'ncurses' 'gdbm' 'nss' 'openssl' 'readline' 'libffi' 'sqlite' 'xz' 'python-i686-bin' 'git' 'zip' 'unzip' 'tar' 'curl')
-makedepends=('git' 'nodejs' 'npm')
-source=("git+$url.git")
+depends=('git' 'steam')
+makedepends=('npm' 'curl' 'zip' 'unzip' 'tar' 'cmake' 'ninja' 'lib32-gcc-libs' 'pnpm')
+depends_x86_64=('python-i686-bin')
+source=("git+$url.git#commit=e837940723baec50ff969e5004b46a153ed63c5b")
 sha256sums=('SKIP')
-validpgpkeys=('D4A49B8AB39D704F')
 options=(!debug)
 install=millennium.install
 
-build() {
-    export NODE_NO_WARNINGS=1
-    cd "$srcdir/millennium"
-
+prepare() {
+    cd "Millennium"
     echo -e "\e[1m\e[92m==>\e[0m \e[1mCloning submodules...\e[0m"
     git submodule update --init --recursive
+}
+
+build() {
+    export NODE_NO_WARNINGS=1
+    cd "$srcdir/Millennium"
 
     echo -e "\e[1m\e[92m==>\e[0m \e[1mBuilding Millennium core assets...\e[0m"
 
-    cd assets
-    npm install @steambrew/api --silent
-    npm install --silent
-    npm run build
-    cd ..
+    cd sdk && pnpm install && pnpm run build && cd ..
+    cd assets && pnpm install && npm run build && cd ..
+
+    mkdir -p ./shims/build/
+    cp -r ./sdk/typescript-packages/loader/build/* ./shims/build/
 
     echo -e "\e[1m\e[92m==>\e[0m \e[1mBootstrapping VCPKG...\e[0m"
 
@@ -40,34 +43,16 @@ build() {
 }
 
 package() {
-    cd "$srcdir/millennium"
-    local dataPath="${XDG_DATA_HOME:=$HOME/.local/share}"
-    local destinationBase="$pkgdir$dataPath/millennium/lib/assets"
+    cd "$srcdir/Millennium"
 
-    declare -A paths=(
-        ["./assets/.millennium/Dist/index.js"]="$destinationBase/.millennium/Dist/index.js"
-        ["./assets/core"]="$destinationBase/core"
-        ["./assets/pipx"]="$destinationBase/pipx"
-        ["./assets/requirements.txt"]="$destinationBase/requirements.txt"
-        ["./assets/plugin.json"]="$destinationBase/plugin.json"
-    )
-
-    for source in "${!paths[@]}"; do
-        destination="${paths[$source]}"
-        destinationDir="$(dirname "$destination")"
-        if [ ! -d "$destinationDir" ]; then
-            mkdir -p "$destinationDir"
-        fi
-        cp -r "$source" "$destination"
-    done
-    
-    install -Dm755 build/libmillennium_x86.so "$pkgdir/usr/lib/millennium/libmillennium_x86.so"
-    install -Dm755 build/cli/millennium "$pkgdir/usr/bin/millennium"
-    
+    bash ./scripts/ci/posix/mk-assets.sh "$pkgdir/usr/share/millennium/assets"
     mkdir -p "$pkgdir/usr/lib/millennium"
-    mkdir -p "$pkgdir$dataPath/millennium/lib/shims"
 
-    cp -r ./shims/build/* "$pkgdir$dataPath/millennium/lib/shims/"
+    install -Dm755 build/libmillennium_x86.so "$pkgdir/usr/lib/millennium/libmillennium_x86.so"
+    install -Dm755 build/unix-hooks/libmillennium_bootstrap_86x.so "$pkgdir/usr/lib/millennium/libmillennium_bootstrap_86x.so"
+    
+    mkdir -p "$pkgdir/usr/share/millennium/shims"
 
+    cp -r ./shims/build/* "$pkgdir/usr/share/millennium/shims/"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

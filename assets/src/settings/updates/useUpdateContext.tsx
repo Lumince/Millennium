@@ -1,9 +1,40 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import React, { createContext, useContext } from 'react';
 import { PyResyncUpdates } from '../../utils/ffi';
-import { IconsModule, pluginSelf, SteamSpinner } from '@steambrew/client';
+import { DialogButton, IconsModule, pluginSelf, SteamSpinner } from '@steambrew/client';
 import { UpdateItemType } from './UpdateCard';
 import { locale } from '../../../locales';
-import { ErrorModal } from '../../components/ErrorModal';
+import { Placeholder } from '../../components/Placeholder';
+import { settingsClasses } from '../../utils/classes';
 
 type UpdateContextProviderProps = {
 	children: React.ReactNode;
@@ -110,30 +141,27 @@ export class UpdateContextProvider extends React.Component<UpdateContextProvider
 		}
 	};
 
-	RenderUpToDateModal: React.FC = () => {
-		return (
-			<div className="MillenniumUpToDate_Container">
-				<IconsModule.Checkmark width="64" />
-				<div className="MillenniumUpToDate_Header">{locale.updatePanelNoUpdatesFound}</div>
-			</div>
-		);
-	};
-
 	render() {
 		const { updatingThemes, updatingPlugins, hasReceivedUpdates, hasUpdateError } = this.state;
 
 		if (hasUpdateError) {
 			return (
-				<ErrorModal
+				<Placeholder
+					icon={<IconsModule.ExclamationPoint />}
 					header={locale.updatePanelErrorHeader}
 					body={locale.updatePanelErrorBody + this.parseUpdateErrorMessage()}
-					options={{ buttonText: locale.updatePanelErrorButton, onClick: this.fetchAvailableUpdates.spread(true) }}
-				/>
+				>
+					<DialogButton className={settingsClasses.SettingsDialogButton} onClick={this.fetchAvailableUpdates.spread(true)}>
+						{locale.updatePanelErrorButton}
+					</DialogButton>
+				</Placeholder>
 			);
 		}
 
 		if (!hasReceivedUpdates) return <SteamSpinner background="transparent" />;
-		if (!this.hasAnyUpdates()) return <this.RenderUpToDateModal />;
+		if (!this.hasAnyUpdates()) {
+			return <Placeholder icon={<IconsModule.Checkmark />} header={locale.updatePanelNoUpdatesFoundHeader} body={locale.updatePanelNoUpdatesFound} />;
+		}
 
 		return (
 			<UpdateContext.Provider

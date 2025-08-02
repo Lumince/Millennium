@@ -32,50 +32,10 @@
 #include "co_spawn.h"
 #include <iostream>
 #include <tuple>
-#include "logger.h"
-#include "fvisible.h"
+#include "plugin_logger.h"
 
-/**
- * @brief Create a semantically correct JavaScript function call from a JSON object.
- * 
- * @param data The JSON object containing the function call information.
- * - methodName: The name of the method to call.
- * - argumentList: A list of arguments to pass to the function.
- * 
- * @return The constructed function call.
- */
-MILLENNIUM std::string Python::ConstructFunctionCall(nlohmann::basic_json<> data)
-{
-    std::string strFunctionCall = data["methodName"];
-    strFunctionCall += "(";
 
-    if (data.contains("argumentList"))
-    {
-        int index = 0, argumentLength = data["argumentList"].size();
-
-        for (auto argIterator = data["argumentList"].begin(); argIterator != data["argumentList"].end(); ++argIterator, ++index)
-        {
-            auto& parameterKeyWord = argIterator.key();
-            auto& parameterData = argIterator.value();
-
-            if (parameterData.is_boolean()) 
-            { 
-                strFunctionCall += fmt::format("{}={}", parameterKeyWord, parameterData ? "True" : "False"); 
-            }
-            else 
-            { 
-                strFunctionCall += fmt::format("{}={}", parameterKeyWord, parameterData.dump()); 
-            }
-
-            if (index < argumentLength - 1)
-            {
-                strFunctionCall += ", ";
-            }
-        }
-    }
-    strFunctionCall += ")";
-    return strFunctionCall;
-}
+using json = nlohmann::json;
 
 /**
  * @brief Get the exception information from the Python interpreter.
@@ -85,7 +45,7 @@ MILLENNIUM std::string Python::ConstructFunctionCall(nlohmann::basic_json<> data
  * 
  * @return { errorMessageString, tracebackString }
  */
-MILLENNIUM std::tuple<std::string, std::string> Python::ActiveExceptionInformation() 
+std::tuple<std::string, std::string> Python::ActiveExceptionInformation() 
 {
     PyObject* typeObj = nullptr;
     PyObject* valueObj = nullptr;
@@ -136,138 +96,287 @@ MILLENNIUM std::tuple<std::string, std::string> Python::ActiveExceptionInformati
     return { errorMessage, tracebackText };
 }
 
-/**
- * Converts a Python object to a JSON string using the `json.dumps()` function.
- *
- * @param {PyObject*} obj - The Python object to convert to JSON.
- * @returns {std::optional<std::string>} - The JSON string representation of the object, or an empty optional if conversion fails.
- *
- * This function attempts to serialize a Python object into a JSON string using the `json` module's `dumps()` function.
- * If the conversion is successful, it returns the JSON string. If it fails, it returns an empty optional.
- */
-MILLENNIUM const std::optional<std::string> PyObjectToJsonString(PyObject* obj) 
+namespace Python
 {
-    // Import json module
-    static PyObject* jsonModule = PyImport_ImportModule("json");
-    if (!jsonModule) 
+    namespace ObjectHandler
     {
-        return std::nullopt;
+        EvalResult HandleActiveException() 
+        {
+            const auto [errorMessage, tracebackText] = ActiveExceptionInformation();
+            return {Types::Error, errorMessage + tracebackText};
+        }
+
+        EvalResult HandleBooleanObject(PyObject* obj) 
+        {
+            return {Types::Boolean, (obj == Py_True) ? "True" : "False"};
+        }
+
+        EvalResult HandleIntegerObject(PyObject* obj) 
+        {
+            long longValue = PyLong_AsLong(obj);
+            if (PyErr_Occurred()) return HandleActiveException();
+            return {Types::Integer, std::to_string(longValue)};
+        }
+
+        EvalResult HandleFloatObject(PyObject* obj) 
+        {
+            double doubleValue = PyFloat_AsDouble(obj);
+            if (PyErr_Occurred()) return HandleActiveException();
+            return {Types::String, std::to_string(doubleValue)};
+        }
+
+        EvalResult HandleUnicodeObject(PyObject* obj)
+        {
+            const char* valueStr = PyUnicode_AsUTF8(obj);
+            if (PyErr_Occurred()) return HandleActiveException();
+            return {Types::String, valueStr ? std::string(valueStr) : std::string("")};
+        }
+
+        EvalResult HandleBytesObject(PyObject* obj) 
+        {
+            char* bytesValue = PyBytes_AsString(obj);
+            if (!bytesValue) return {Types::Error, "Python::ObjectHandler::HandleBytesObject(): Failed to convert bytes object to string."};
+
+            Py_ssize_t size = PyBytes_Size(obj);
+            if (size < 0) return {Types::Error, "Python::ObjectHandler::HandleBytesObject(): Failed to get size of bytes object."};
+
+            return {Types::String, std::string(bytesValue, size)};
+        }
+
+        EvalResult HandleContainerObject(PyObject* obj) 
+        {
+            PyObject* jsonModule = PyImport_ImportModule("json");
+            if (jsonModule) 
+            {
+                PyObject* dumpsFunction = PyObject_GetAttrString(jsonModule, "dumps");
+                if (dumpsFunction) 
+                {
+                    PyObject* jsonStr = PyObject_CallFunction(dumpsFunction, "O", obj);
+                    if (jsonStr && PyUnicode_Check(jsonStr)) 
+                    {
+                        const char* utf8JsonStr = PyUnicode_AsUTF8(jsonStr);
+                        std::string result = utf8JsonStr ? utf8JsonStr : "{}";
+                        Py_XDECREF(jsonStr);
+                        Py_DECREF(dumpsFunction);
+                        Py_DECREF(jsonModule);
+                        return {Types::JSON, result};
+                    }
+                    Py_XDECREF(jsonStr);
+                    Py_DECREF(dumpsFunction);
+                }
+                Py_DECREF(jsonModule);
+            }
+            
+            PyErr_Clear();
+            PyObject* objRepresentation = PyObject_Repr(obj);
+            if (objRepresentation) 
+            {
+                const char* unicodeRepresentation = PyUnicode_AsUTF8(objRepresentation);
+                std::string result = unicodeRepresentation ? unicodeRepresentation : "{}";
+                Py_DECREF(objRepresentation);
+                return {Types::JSON, result};
+            }
+            
+            return {Types::JSON, "{}"};
+        }
+
+        EvalResult HandleNoneObject() 
+        {
+            return {Types::JSON, "null"};
+        }
+
+        EvalResult HandleUnknownObject(PyObject* obj) 
+        {
+            PyObject* objRepresentation = PyObject_Repr(obj);
+            if (objRepresentation) 
+            {
+                const char* unicodeRepresentation = PyUnicode_AsUTF8(objRepresentation);
+                std::string result = unicodeRepresentation ? unicodeRepresentation : "<unknown object>";
+                Py_DECREF(objRepresentation);
+                return {Types::Unknown, result};
+            }
+            return {Types::Unknown, "<unknown object>"};
+        }
     }
-
-    // Get dumps function
-    static PyObject* jsonDumpsFunc = PyObject_GetAttrString(jsonModule, "dumps");
-    if (!jsonDumpsFunc || !PyCallable_Check(jsonDumpsFunc)) 
-    {
-        return std::nullopt;
-    }
-
-    PyObject* args = PyTuple_Pack(1, obj);
-    if (!args) 
-    {
-        return std::nullopt;
-    }
-
-    PyObject* jsonStrObj = PyObject_CallObject(jsonDumpsFunc, args);
-    Py_DECREF(args);
-
-    if (!jsonStrObj) 
-    {
-        PyErr_Clear();  // Clear any error from json.dumps call failure
-        return std::nullopt;
-    }
-
-    const char* jsonCStr = PyUnicode_AsUTF8(jsonStrObj);
-    std::string jsonStr = jsonCStr ? jsonCStr : "";
-
-    Py_DECREF(jsonStrObj);
-    return jsonStr;
 }
 
-
 /**
- * Evaluates a given Python script within the `__main__` module context.
- *
- * @param {std::string} pluginName - The name of the plugin invoking the evaluation.
- * @param {std::string} script - The Python script to execute.
- * @returns {Python::EvalResult} - The result of the evaluation, containing the evaluated value as a string and its type.
- *
- * The function attempts to evaluate the Python script using `PyRun_String()`, handling
- * various return types including `None`, `bool`, `int`, and `str`. If an error occurs during
- * execution, it logs the error and returns an error result.
- *
- * Possible return types:
- * - `Python::Types::Integer` for integer values.
- * - `Python::Types::Boolean` for boolean values.
- * - `Python::Types::String` for string values.
- * - `Python::Types::Error` if an error occurs or an unsupported type is encountered.
- */
-MILLENNIUM const Python::EvalResult EvaluatePython(std::string pluginName, std::string script) 
+* Converts a Python object to an EvalResult with appropriate type classification and string representation.
+* 
+* @param {PyObject*} obj - Python object to convert, can be nullptr for error handling
+* 
+* @returns {Python::EvalResult} Result object containing the converted value and its classified type
+* 
+* @throws Does not throw C++ exceptions, but handles Python exceptions internally
+*/
+Python::EvalResult PyObjectCastEvalResult(PyObject* obj) 
 {
-    PyObject* mainModule = PyImport_AddModule("__main__");
+    if (!obj) return Python::ObjectHandler::HandleActiveException();
+    
+    if      (PyBool_Check(obj))                                            return Python::ObjectHandler::HandleBooleanObject(obj);
+    else if (PyLong_Check(obj))                                            return Python::ObjectHandler::HandleIntegerObject(obj);
+    else if (PyFloat_Check(obj))                                           return Python::ObjectHandler::HandleFloatObject(obj);
+    else if (PyUnicode_Check(obj))                                         return Python::ObjectHandler::HandleUnicodeObject(obj);
+    else if (PyBytes_Check(obj))                                           return Python::ObjectHandler::HandleBytesObject(obj);
+    else if (PyList_Check(obj) || PyTuple_Check(obj) || PyDict_Check(obj)) return Python::ObjectHandler::HandleContainerObject(obj);
+    else if (obj == Py_None)                                               return Python::ObjectHandler::HandleNoneObject();
 
-    if (!mainModule) 
+    else return Python::ObjectHandler::HandleUnknownObject(obj);
+}
+/** 
+ *  Resolves a dotted attribute path to a Python object.
+ * 
+ * @param dottedPath The dotted path string, e.g., "module.submodule.function".
+ * @return A PyObject* representing the resolved attribute, or nullptr if not found.
+ */
+PyObject* resolveDottedAttribute(const std::string& dottedPath) 
+{
+    std::vector<std::string> parts;
+    std::stringstream ss(dottedPath);
+    std::string part;
+    
+    while (std::getline(ss, part, '.')) 
     {
-        const auto message = fmt::format("Failed to fetch python module on [{}]. This usually means the GIL could not be acquired either because the backend froze or crashed", pluginName);
-
-        ErrorToLogger(pluginName, message);
-        return { message, Python::Types::Error };
+        parts.push_back(part);
     }
-
-    PyObject* globalDictionaryObj = PyModule_GetDict(mainModule);
-    PyObject* EvaluatedObj = PyRun_String(script.c_str(), Py_eval_input, globalDictionaryObj, globalDictionaryObj);
-
-    if (!EvaluatedObj && PyErr_Occurred()) 
+    
+    if (parts.empty()) 
     {
-        const auto [errorMessage, traceback] = Python::ActiveExceptionInformation();
-
-        Logger.PrintMessage(" FFI-ERROR ", fmt::format("Failed to call {}: {}\n{}{}", script, COL_RED, traceback, COL_RESET), COL_RED);
+        return nullptr;
     }
-
-    if (EvaluatedObj == nullptr || EvaluatedObj == Py_None) 
+    
+    PyObject* current = PyObject_GetAttrString(PyImport_AddModule("__main__"), parts[0].c_str());
+    if (!current) 
     {
-        return { "0", Python::Types::Integer }; // whitelist NoneType as integer 0
+        return nullptr;
     }
-    if (PyBool_Check(EvaluatedObj)) 
+    
+    for (size_t i = 1; i < parts.size(); ++i) 
     {
-        return { PyLong_AsLong(EvaluatedObj) == 0 ? "False" : "True", Python::Types::Boolean };
-    }
-    else if (PyLong_Check(EvaluatedObj)) 
-    {
-        return { std::to_string(PyLong_AsLong(EvaluatedObj)), Python::Types::Integer };
-    }
-    else if (PyUnicode_Check(EvaluatedObj)) 
-    {
-        return { PyUnicode_AsUTF8(EvaluatedObj), Python::Types::String };
-    }
-    else if (PyDict_Check(EvaluatedObj) || PyList_Check(EvaluatedObj) || PyTuple_Check(EvaluatedObj)) 
-    {
-        // Attempt to serialize to JSON string
-        auto jsonStrOpt = PyObjectToJsonString(EvaluatedObj);
-        if (jsonStrOpt.has_value()) 
+        PyObject* next = PyObject_GetAttrString(current, parts[i].c_str());
+        Py_DECREF(current);
+        if (!next) 
         {
-            return { jsonStrOpt.value(), Python::Types::JSON }; // Return JSON as string type
+            return nullptr;
         }
-        else 
+        current = next;
+    }
+    
+    return current;
+}
+
+/*
+ * Returns a representation of the given JSON data as a PyObject*
+ *
+ * @param json The JSON object to be converted
+ * @return A PyObject* representing the passed JSON object
+ */
+PyObject* PyObjectFromJson(const nlohmann::json& json)
+{
+    PyObject* pObject = nullptr;
+    
+    if      (json.is_string())         pObject = PyUnicode_FromString(json.get<std::string>().c_str());
+    else if (json.is_number_integer()) pObject = PyLong_FromLongLong(json.get<long long>());
+    else if (json.is_number_float())   pObject = PyFloat_FromDouble(json.get<double>());
+    else if (json.is_boolean())        pObject = PyBool_FromLong(json.get<bool>() ? 1 : 0);
+    else if (json.is_array())
+    {
+        pObject = PyList_New(json.size());
+
+        if (!pObject) 
         {
-            // Fallback: failed JSON serialization
-            PyObject* objectType = PyObject_Type(EvaluatedObj);
-            PyObject* strObjectType = PyObject_Str(objectType);
-            const char* strTypeName = PyUnicode_AsUTF8(strObjectType);
-            PyErr_Clear();
-            Py_XDECREF(objectType);
-            Py_XDECREF(strObjectType);
-            return { fmt::format("Failed to serialize return value of type [{}] to JSON", strTypeName), Python::Types::Error };
+            LOG_ERROR("Failed to allocate a new Python list of size: {}", json.size());
+            return nullptr;
+        }
+
+        int i = 0;
+        for (const auto& arrayItem : json)
+        {
+            PyObject* pListItem = PyObjectFromJson(arrayItem);
+            if (pListItem)
+            {
+                if (PyList_SetItem(pObject, i, pListItem) < 0)
+                {
+                    Py_DECREF(pObject);
+                    LOG_ERROR("Failed to set item in Python list at index: {}, json data: {}", i, json.dump(4));
+                    return nullptr;
+                }
+                i++;
+            }
+            else
+            {
+                // Clean up and return error if recursive call failed
+                Py_DECREF(pObject);
+                LOG_ERROR("Failed to convert array item to Python object");
+                return nullptr;
+            }
+        }
+    }
+    else if (json.is_null()) 
+    {
+        pObject = Py_None;
+        Py_INCREF(Py_None);
+    }
+
+    return pObject;
+}
+
+/** 
+ * Calls a Python function with the provided JSON data.
+ * 
+ * @param jsonData The JSON object containing the method name and arguments.
+ * @return A PyObject* representing the result of the function call, or nullptr on failure.
+ */
+PyObject* InvokePythonFunction(const nlohmann::json& jsonData) 
+{
+    std::string methodName = jsonData["methodName"];
+    
+    PyObject* pFunc = resolveDottedAttribute(methodName);
+    if (!pFunc || !PyCallable_Check(pFunc)) 
+    {
+        LOG_ERROR(fmt::format("Failed to resolve or call function: {}. Call data {}", methodName, jsonData.dump(4)));
+        Py_XDECREF(pFunc);
+        return nullptr;
+    }
+    
+    PyObject* pKwargs = PyDict_New();
+    if (!pKwargs) 
+    {
+        Py_DECREF(pFunc);
+        return nullptr;
+    }
+    
+    if (jsonData.contains("argumentList") && !jsonData["argumentList"].is_null()) 
+    {
+        auto argumentList = jsonData["argumentList"];
+        
+        for (auto& [key, value] : argumentList.items()) 
+        {
+            PyObject* pValue = PyObjectFromJson(value);
+
+            if (pValue) 
+            {
+                if (PyDict_SetItemString(pKwargs, key.c_str(), pValue) < 0) 
+                {
+                    Py_DECREF(pValue);
+                    Py_DECREF(pKwargs);
+                    Py_DECREF(pFunc);
+                    return nullptr;
+                }
+                Py_DECREF(pValue);
+            }
         }
     }
 
-    PyObject* objectType = PyObject_Type(EvaluatedObj);
-    PyObject* strObjectType = PyObject_Str(objectType);
-    const char* strTypeName = PyUnicode_AsUTF8(strObjectType);
-    PyErr_Clear();  // Clear any Python exception
-    Py_XDECREF(objectType);
-    Py_XDECREF(strObjectType);
-
-    return { fmt::format("Millennium expected return type [int, str, bool, JSON-serializable dict/list/tuple] but received [{}]", strTypeName) , Python::Types::Error };
+    PyObject* pArgs = PyTuple_New(0);
+    PyObject* pResult = PyObject_Call(pFunc, pArgs, pKwargs);
+    
+    // Cleanup
+    Py_DECREF(pArgs);
+    Py_DECREF(pKwargs);
+    Py_DECREF(pFunc);
+    
+    return pResult;
 }
 
 /**
@@ -288,34 +397,34 @@ MILLENNIUM const Python::EvalResult EvaluatePython(std::string pluginName, std::
  *
  * The function ensures that the GIL is properly acquired and released before and after execution.
  */
-MILLENNIUM Python::EvalResult Python::LockGILAndEvaluate(std::string pluginName, std::string script)
+Python::EvalResult Python::LockGILAndInvokeMethod(std::string pluginName, nlohmann::json functionCall)
 {
     const bool hasBackend = PythonManager::GetInstance().HasBackend(pluginName);
 
     /** Plugin has no backend and therefor the call should not be completed */
     if (!hasBackend) 
     {
-        return { "false", Boolean };
+        return { Boolean, "false" };
     }
 
     auto result = PythonManager::GetInstance().GetPythonThreadStateFromName(pluginName);
 
     if (!result.has_value()) 
     {
-        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early? Tried to evaluate ->\n{}", pluginName, script));
-        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", script));
+        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early?", pluginName));
+        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", functionCall.dump()));
 
-        return { "overstepped partying thread state", Error };
+        return { Error, "overstepped partying thread state" };
     }
 
     auto& [strPluginName, threadState, interpMutex] = *result.value();
 
     if (threadState == nullptr) 
     {
-        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early? Tried to evaluate ->\n{}", pluginName, script));
-        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", script));
+        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early?", pluginName));
+        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", functionCall.dump()));
 
-        return { "overstepped partying thread state", Error };
+        return { Error, "overstepped partying thread state" };
     }
 
     std::shared_ptr<PythonGIL> pythonGilLock = std::make_shared<PythonGIL>();
@@ -324,12 +433,29 @@ MILLENNIUM Python::EvalResult Python::LockGILAndEvaluate(std::string pluginName,
     if (threadState == NULL) 
     {
         LOG_ERROR("script execution was queried but the receiving parties thread state was nullptr");
-        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", script));
+        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", functionCall.dump()));
 
-        return { "thread state was nullptr", Error };
+        return { Error, "thread state was nullptr" };
     }
 
-    Python::EvalResult response = EvaluatePython(pluginName, script);
+    PyObject* mainModule = PyImport_AddModule("__main__");
+
+    if (!mainModule) 
+    {
+        const auto message = fmt::format("Failed to fetch python module on [{}]. This usually means the GIL could not be acquired either because the backend froze or crashed", pluginName);
+
+        ErrorToLogger(pluginName, message);
+        return { Error, message };
+    }
+
+    PyObject* globalDictionaryObj = PyModule_GetDict(mainModule);
+    Python::EvalResult response = PyObjectCastEvalResult(InvokePythonFunction(functionCall));
+
+    if (response.type == Python::Types::Error) 
+    {
+        LOG_ERROR(fmt::format("Failed to evaluate script: {}. Error: {}", functionCall.dump(), response.plain));
+        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}. Error: {}", functionCall.dump(), response.plain));
+    }
 
     pythonGilLock->ReleaseAndUnLockGIL();
     return response;
@@ -355,7 +481,7 @@ MILLENNIUM Python::EvalResult Python::LockGILAndEvaluate(std::string pluginName,
  * 
  * The function ensures that the GIL is properly acquired and released before and after execution.
  */
-MILLENNIUM void Python::LockGILAndDiscardEvaluate(std::string pluginName, std::string script)
+void Python::CallFrontEndLoaded(std::string pluginName)
 {
     const bool hasBackend = PythonManager::GetInstance().HasBackend(pluginName);
 
@@ -369,8 +495,8 @@ MILLENNIUM void Python::LockGILAndDiscardEvaluate(std::string pluginName, std::s
 
     if (!result.has_value()) 
     {
-        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early? Tried to evaluate ->\n{}", pluginName, script));
-        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script: {}", script));
+        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early? Tried to delegate frontend loaded message.", pluginName));
+        ErrorToLogger(pluginName, fmt::format("Failed to delegate frontend loaded message for {}.", pluginName));
 
         return;
     }
@@ -379,8 +505,8 @@ MILLENNIUM void Python::LockGILAndDiscardEvaluate(std::string pluginName, std::s
 
     if (threadState == nullptr) 
     {
-        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early? Tried to evaluate ->\n{}", pluginName, script));
-        ErrorToLogger(pluginName, fmt::format("Failed to evaluate script; maybe it crashed or exited early?: {}", script));
+        LOG_ERROR(fmt::format("couldn't get thread state ptr from plugin [{}], maybe it crashed or exited early? Tried to delegate frontend loaded message.", pluginName));
+        ErrorToLogger(pluginName, fmt::format("Failed to delegate frontend loaded message for {}.", pluginName));
         return;
     }
 
@@ -388,26 +514,31 @@ MILLENNIUM void Python::LockGILAndDiscardEvaluate(std::string pluginName, std::s
     pythonGilLock->HoldAndLockGILOnThread(threadState);
     {
         PyObject* globalDictionaryObj = PyModule_GetDict(PyImport_AddModule("__main__"));
-        PyObject* EvaluatedObj = PyRun_String(script.c_str(), Py_eval_input, globalDictionaryObj, globalDictionaryObj);
+        PyObject* plugin = PyDict_GetItemString(globalDictionaryObj, "plugin");
 
-        if (!EvaluatedObj && PyErr_Occurred()) 
+        if (plugin == nullptr) 
         {
-            const auto [errorMessage, traceback] = Python::ActiveExceptionInformation();
-            PyErr_Clear();
-
-            if (errorMessage == "name 'plugin' is not defined")
+            if (PyErr_Occurred()) 
             {
-                Logger.PrintMessage(" FFI-ERROR ", fmt::format("Millennium failed to call {} on {} as the function "
-                    "does not exist, or the interpreter crashed before it was loaded.", script, pluginName), COL_RED);
-
-                ErrorToLogger(pluginName, fmt::format("Millennium failed to call {} on {} as the function "
-                    "does not exist, or the interpreter crashed before it was loaded.", script, pluginName));
-                return;
+                auto [errorMsg, traceback] = Python::ActiveExceptionInformation();
+                LOG_ERROR(fmt::format("Failed to get plugin attribute: {}:\n{}", errorMsg, traceback));
+                ErrorToLogger(pluginName, fmt::format("Failed to get plugin attribute: {}:\n{}", errorMsg, traceback));
             }
-
-            Logger.PrintMessage(" FFI-ERROR ", fmt::format("Millennium failed to call {} on {}: {}\n{}{}", script, pluginName, COL_RED, traceback, COL_RESET), COL_RED);
-            ErrorToLogger(pluginName, fmt::format("Millennium failed to call {} on {}: {}\n", script, pluginName, traceback));
+            return;
         }
+
+        PyObject* result = PyObject_CallMethod(plugin, "_front_end_loaded", nullptr);
+        if (result == nullptr) {
+            auto [errorMsg, traceback] = Python::ActiveExceptionInformation();
+            LOG_ERROR(fmt::format("Failed to call _front_end_loaded: {}:\n{}", errorMsg, traceback));
+            ErrorToLogger(pluginName, fmt::format("Failed to call _front_end_loaded: {}:\n{}", errorMsg, traceback));
+            Py_DECREF(plugin);
+            return;
+        }
+
+        Py_DECREF(result);
+        // Py_DECREF(plugin); Oops this is a borrowed ref. 
+        return;
     }
     pythonGilLock->ReleaseAndUnLockGIL();
 }

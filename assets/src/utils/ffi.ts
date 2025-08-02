@@ -1,3 +1,33 @@
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { callable } from '@steambrew/client';
 
 export const PyGetSteamPath = callable<[], string>('Millennium.steam_path');
@@ -22,12 +52,13 @@ export const PyFindAllThemes = callable<[], string>('find_all_themes');
 export const PyGetThemeColorOptions = callable<[{ theme_name: string }], string>('theme_config.get_color_opts');
 export const PyDoesThemeUseAccentColor = callable<[]>('theme_config.does_theme_use_accent_color');
 export const PySetConfigKeypair = callable<[{ key: string; value: any }], void>('theme_config.set_config_keypair');
-export const PySetBackendConfig = callable<[{ config: string; skip_propagation: true }], void>('get_config().set_all');
-export const PyGetBackendConfig = callable<[], string>('get_config().get_all');
+export const PySetBackendConfig = callable<[{ config: string; skip_propagation: true }], void>('config.set_all');
+export const PyGetBackendConfig = callable<[], string>('config.get_all');
 export const PyGetStartupConfig = callable<[], string>('GetMillenniumConfig');
 export const PyGetLogData = callable<[], any[]>('GetPluginBackendLogs');
 export const PySetClipboardText = callable<[{ data: string }], boolean>('SetClipboardContent');
 export const PyGetRootColors = callable<[], string>('theme_config.get_colors');
 export const PyChangeCondition = callable<[{ theme: string; newData: string; condition: string }], boolean>('theme_config.change_condition');
-export const PyChangeColor = callable<[{ theme: string; new_color: string; color_name: string; type: number }], boolean>('theme_config.change_color');
-export const PyChangeAccentColor = callable<[{ new_color: string }], boolean>('theme_config.change_accent_color');
+export const PyChangeColor = callable<[{ theme: string; new_color: string; color_name: string; color_type: number }], string>('theme_config.change_color');
+export const PyChangeAccentColor = callable<[{ new_color: string }], string>('theme_config.change_accent_color');
+export const PyUpdateMillennium = callable<[{ downloadUrl: string }], void>('MillenniumUpdater.queue_update');

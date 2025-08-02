@@ -1,3 +1,31 @@
+# ==================================================
+#   _____ _ _ _             _                     
+#  |     |_| | |___ ___ ___|_|_ _ _____           
+#  | | | | | | | -_|   |   | | | |     |          
+#  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|          
+# 
+# ==================================================
+# 
+# Copyright (c) 2025 Project Millennium
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 # This module is intended to keep track on the webkit hooks that are added to the browser
 import Millennium, sys, os, json, traceback
 from config.manager import get_config
@@ -76,10 +104,10 @@ def add_browser_js(js_path: str, regex=".*") -> None:
     stack.push(Millennium.add_browser_js(js_path, regex))
 
 def remove_all_patches() -> None:
-    index = 0
-    while index < len(conditional_patches):
-        Millennium.remove_browser_module(conditional_patches[index][1])
-        del conditional_patches[index] 
+    for target_path, module_id in conditional_patches:
+        if module_id is not None:  # Check for None
+            Millennium.remove_browser_module(module_id)
+    conditional_patches.clear()
 
 def add_conditional_data(path: str, data: dict, theme_name: str):
     try:
@@ -88,11 +116,11 @@ def add_conditional_data(path: str, data: dict, theme_name: str):
         for patch in parsed_patches:
             if patch['fileType'] == 'TargetCss' and patch['targetPath'] is not None and patch['matchString'] is not None:
                 target_path = os.path.join(path, patch['targetPath'])
-                conditional_patches.append((target_path, Millennium.add_browser_css(target_path, patch['matchString'])))
+                conditional_patches.append((target_path, add_browser_css(target_path, patch['matchString'])))
 
             elif patch['fileType'] == 'TargetJs' and patch['targetPath'] is not None and patch['matchString'] is not None:
                 target_path = os.path.join(path, patch['targetPath'])
-                conditional_patches.append((target_path, Millennium.add_browser_js(target_path, patch['matchString'])))
+                conditional_patches.append((target_path, add_browser_js(target_path, patch['matchString'])))
 
     except Exception as e:
         logger.log(f"Error adding conditional data: {e}")

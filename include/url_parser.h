@@ -76,10 +76,9 @@ static const std::string UrlDecode(const std::string &url)
     return decoded;
 }
 
-static const std::string UrlFromPath(const std::string baseAddress, const std::string path) {
-
-
-    #ifdef __linux__
+static const std::string UrlFromPath(const std::string baseAddress, const std::string path) 
+{
+    #if defined(__linux__) || defined(__APPLE__)
     {
         return baseAddress + UrlEncode(path.substr(1));
     }
@@ -92,13 +91,20 @@ static const std::string UrlFromPath(const std::string baseAddress, const std::s
 
 static const std::string PathFromUrl(const std::string& path)
 {
-    #ifdef __linux__
+    // Remove query parameters for file path
+    std::string cleanPath = path;
+    size_t queryPos = cleanPath.find('?');
+    if (queryPos != std::string::npos) {
+        cleanPath = cleanPath.substr(0, queryPos);
+    }
+
+    #if defined(__linux__) || defined(__APPLE__)
     {
-        return "/" + UrlDecode(path);
+        return "/" + UrlDecode(cleanPath);
     }
     #elif _WIN32
     {
-        return UrlDecode(path);
+        return UrlDecode(cleanPath);
     }
     #endif
 }

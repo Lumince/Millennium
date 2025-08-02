@@ -1,3 +1,33 @@
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { ConfirmModal, pluginSelf, showModal, ShowModalResult, SuspensefulImage, TextField } from '@steambrew/client';
 import React, { Component, useEffect } from 'react';
 import { Utils } from '../../utils';
@@ -10,9 +40,10 @@ interface PluginIdModalProps {
 	tutorialImageUrl: string;
 	installer: Installer;
 	modal: ShowModalResult;
+	refetchDataCb: () => void;
 }
 
-function PluginIdModal({ tutorialImageUrl, installer, modal }: PluginIdModalProps) {
+function PluginIdModal({ tutorialImageUrl, installer, modal, refetchDataCb }: PluginIdModalProps) {
 	const [installID, setInstallID] = React.useState(String());
 
 	return (
@@ -21,19 +52,18 @@ function PluginIdModal({ tutorialImageUrl, installer, modal }: PluginIdModalProp
 			strDescription={
 				<>
 					Install a user plugin from an ID. These ID's can be found after selecting a plugin at <Utils.URLComponent url={PLUGINS_URL} />
-					<SuspensefulImage src={tutorialImageUrl} style={{ width: '100%', height: 'auto', marginTop: '10px' }} />
+					<SuspensefulImage className="MillenniumInstallDialog_TutorialImage" src={tutorialImageUrl} />
 					<TextField
 						// @ts-ignore
 						placeholder={'Enter an ID here...'}
 						value={installID}
 						onChange={(e) => setInstallID(e.target.value)}
-						style={{ marginTop: '20px' }}
 					/>
 				</>
 			}
 			bHideCloseIcon={true}
 			onOK={() => {
-				installer.OpenInstallPrompt(installID);
+				installer.OpenInstallPrompt(installID, refetchDataCb);
 				modal?.Close();
 			}}
 			onCancel={() => {
@@ -53,7 +83,7 @@ async function cacheImage(url: string) {
 	});
 }
 
-export async function showInstallPluginModal() {
+export async function showInstallPluginModal(refetchDataCb: () => void) {
 	let modal: ShowModalResult;
 	const tutorialImageUrl = [await Utils.GetPluginAssetUrl(), FindPluginIdGif].join('/');
 	const installer = new Installer();
@@ -67,7 +97,7 @@ export async function showInstallPluginModal() {
 			setModalInstance(modal);
 		}, []);
 
-		return <PluginIdModal tutorialImageUrl={tutorialImageUrl} installer={installer} modal={modalInstance} />;
+		return <PluginIdModal refetchDataCb={refetchDataCb} tutorialImageUrl={tutorialImageUrl} installer={installer} modal={modalInstance} />;
 	};
 
 	modal = showModal(<WrappedModal />, pluginSelf.mainWindow, {

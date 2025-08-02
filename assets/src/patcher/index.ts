@@ -4,14 +4,9 @@ import { DOMModifier, classListMatch, constructThemePath } from './Dispatch';
 import { EvaluateConditions } from './v2/Conditions';
 import { PatchV1, EvaluateStatements } from './v1/Conditions';
 import { PatchRootMenu } from '../utils/root-menu';
-import { PatchNotification } from '../utils/notification-patcherr';
-import { Logger } from '../utils/Logger';
 
 const EvaluateModule = (module: string, type: ModuleType, document: Document) => {
 	const activeTheme: ThemeItem = pluginSelf.activeTheme;
-
-	Logger.Log(`Evaluating module:`, module, type);
-
 	switch (type) {
 		case ModuleType.TargetCss:
 			DOMModifier.AddStyleSheet(document, constructThemePath(activeTheme.native, module));
@@ -79,6 +74,8 @@ export function patchDocumentContext(windowContext: any) {
 		document.documentElement.classList.add(plugin);
 	}
 
+	document.documentElement.setAttribute('data-millennium-plugin', pluginSelf?.enabledPlugins?.join(' '));
+
 	if (pluginSelf.isDefaultTheme) {
 		return;
 	}
@@ -109,10 +106,6 @@ export function patchMissedDocuments() {
 		if (popup?.window?.HAS_INJECTED_THEME === undefined) {
 			patchDocumentContext(popup);
 		}
-	}
-
-	if (g_PopupManager?.m_mapPopups?.data_?.length === 0) {
-		Logger.Warn('windowCreated callback called, but no popups found...');
 	}
 }
 

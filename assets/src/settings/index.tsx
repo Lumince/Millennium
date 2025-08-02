@@ -1,68 +1,91 @@
-import {
-	Classes,
-	DialogBody,
-	IconsModule,
-	Millennium,
-	ModalPosition,
-	pluginSelf,
-	showModal,
-	ShowModalResult,
-	SidebarNavigation,
-	SidebarNavigationPage,
-} from '@steambrew/client';
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import { Classes, DialogBody, IconsModule, Navigation, SidebarNavigation, SidebarNavigationPage } from '@steambrew/client';
 import { locale } from '../../locales';
-import { pagedSettingsClasses, settingsClasses } from '../utils/classes';
+import { settingsClasses } from '../utils/classes';
 import { GeneralViewModal } from './general';
 import { MillenniumIcons } from '../components/Icons';
 import { ThemeViewModal } from './themes';
 import { PluginViewModal } from './plugins';
-import { RenderUpdatesSettingsTab, UpdatesViewModal } from './updates';
+import { UpdatesViewModal } from './updates';
 import { UpdateContextProvider } from './updates/useUpdateContext';
 import { RenderLogViewer } from './logs';
-import { useEffect } from 'react';
 import { ConfigProvider } from '../config-provider';
 import Styles from '../utils/styles';
+import { FaPaintRoller } from 'react-icons/fa';
+import { PiPlugsFill } from 'react-icons/pi';
 
 declare global {
 	const g_PopupManager: any;
 }
 
-const tabSpotGeneral = {
+const tabSpotGeneral: SidebarNavigationPage = {
 	visible: true,
 	title: locale.settingsPanelGeneral,
-	icon: <IconsModule.Settings />,
+	icon: <MillenniumIcons.SteamBrewLogo />,
 	content: (
 		<DialogBody className={Classes.SettingsDialogBodyFade}>
 			<GeneralViewModal />
 		</DialogBody>
 	),
+	route: '/millennium/settings/general',
 };
 
-const tabSpotSettings = {
+const tabSpotThemes: SidebarNavigationPage = {
 	visible: true,
 	title: locale.settingsPanelThemes,
-	icon: <MillenniumIcons.Themes />,
+	icon: <FaPaintRoller style={{ height: '20px', width: '20px' }} />,
 	content: (
 		<DialogBody className={Classes.SettingsDialogBodyFade}>
 			<ThemeViewModal />
 		</DialogBody>
 	),
+	route: '/millennium/settings/themes',
 };
 
-const tabSpotPlugins = {
+const tabSpotPlugins: SidebarNavigationPage = {
 	visible: true,
 	title: locale.settingsPanelPlugins,
-	icon: <MillenniumIcons.Plugins />,
+	icon: <PiPlugsFill style={{ height: '20px', width: '20px' }} />,
 	content: (
 		<DialogBody className={Classes.SettingsDialogBodyFade}>
 			<PluginViewModal />
 		</DialogBody>
 	),
+	route: '/millennium/settings/plugins',
 };
 
-const tabSpotUpdates = {
+const tabSpotUpdates: SidebarNavigationPage = {
 	visible: true,
-	title: <RenderUpdatesSettingsTab />,
+	title: locale.settingsPanelUpdates,
 	icon: <IconsModule.Update />,
 	content: (
 		<DialogBody className={Classes.SettingsDialogBodyFade}>
@@ -71,9 +94,10 @@ const tabSpotUpdates = {
 			</UpdateContextProvider>
 		</DialogBody>
 	),
+	route: '/millennium/settings/updates',
 };
 
-const tabSpotLogs = {
+const tabSpotLogs: SidebarNavigationPage = {
 	visible: true,
 	title: locale.settingsPanelLogs,
 	icon: <IconsModule.TextCodeBlock />,
@@ -82,63 +106,18 @@ const tabSpotLogs = {
 			<RenderLogViewer />
 		</DialogBody>
 	),
+	route: '/millennium/settings/logs',
 };
 
-const settingsTabsMap = {
-	themes: locale.settingsPanelThemes,
-	plugins: locale.settingsPanelPlugins,
-	updates: locale.settingsPanelUpdates,
-	report: locale.settingsPanelBugReport,
-	logs: locale.settingsPanelLogs,
-	settings: locale.settingsPanelSettings,
-};
-
-export type SettingsTabs = keyof typeof settingsTabsMap;
-
-export async function OpenSettingsTab(popup: any, activeTab: SettingsTabs) {
-	if (!activeTab) {
-		return;
-	}
-
-	/** FIXME: Fix this to use actual router, tried it and it worked but it broke other portions of the UI. */
-	const tabs = (await Millennium.findElement(popup.m_popup.document, `.${pagedSettingsClasses.PagedSettingsDialog_PageListItem}`)) as NodeListOf<HTMLElement>;
-	for (const tab of tabs) {
-		if (tab.textContent.includes(settingsTabsMap[activeTab])) {
-			tab.click();
-			break;
-		}
-	}
-}
-
-export function MillenniumSettings({ popup }: { popup: ShowModalResult }) {
-	const className = `${settingsClasses.SettingsModal} ${settingsClasses.DesktopPopup} MillenniumSettings`;
-	const pages: SidebarNavigationPage[] = [tabSpotGeneral, tabSpotSettings, tabSpotPlugins, tabSpotUpdates, tabSpotLogs];
-
-	/**
-	 * For some reason, putting a sidebar navigation inside a modal causes the modal to not close when clicking outside of it.
-	 * This is a workaround to fix that.
-	 */
-	useEffect(() => {
-		const handleClick = (event: MouseEvent) => {
-			if ((event.target as HTMLElement).className === 'ModalPosition') {
-				popup.Close();
-			}
-		};
-
-		pluginSelf.mainWindow.document.addEventListener('click', handleClick);
-
-		return () => {
-			pluginSelf.mainWindow.document.removeEventListener('click', handleClick);
-		};
-	}, []);
+export function MillenniumSettings() {
+	const className = `${settingsClasses.SettingsModal} ${settingsClasses.DesktopPopup} MillenniumSettings ModalDialogPopup`;
+	const settingsPages = [tabSpotGeneral, 'separator', tabSpotThemes, tabSpotPlugins, 'separator', tabSpotUpdates, tabSpotLogs];
 
 	return (
 		<ConfigProvider>
-			<ModalPosition>
-				<Styles />
-				{/* @ts-ignore */}
-				<SidebarNavigation className={className} pages={pages} title={'Millennium'} />
-			</ModalPosition>
+			<Styles />
+			{/* @ts-ignore */}
+			<SidebarNavigation className={className} pages={settingsPages} title={'Millennium'} />
 		</ConfigProvider>
 	);
 }
@@ -150,13 +129,7 @@ function RenderSettingsModal(_: any, retObj: any) {
 		retObj.props.menuItems.splice(index + 1, 0, {
 			name: 'Millennium',
 			onClick: () => {
-				let modal: any = {};
-				Object.assign(
-					modal,
-					showModal(<MillenniumSettings popup={modal} />, pluginSelf.mainWindow, {
-						bNeverPopOut: true,
-					}),
-				);
+				Navigation.Navigate('/millennium/settings');
 			},
 			visible: true,
 		});

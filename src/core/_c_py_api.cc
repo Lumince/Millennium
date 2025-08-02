@@ -34,13 +34,12 @@
 #include <nlohmann/json.hpp>
 #include <fmt/core.h>
 #include <fstream>
-#include "log.h"
+#include "internal_logger.h"
 #include "locals.h"
-#include "web_load.h"
+#include "http_hooks.h"
 #include "co_stub.h"
-#include "logger.h"
+#include "plugin_logger.h"
 #include "encoding.h"
-#include "fvisible.h"
 
 std::shared_ptr<PluginLoader> g_pluginLoader;
 
@@ -50,19 +49,19 @@ std::map<std::string, JavaScript::Types> typeMap = {
     { "int",  JavaScript::Types::Integer }
 };
 
-MILLENNIUM PyObject* GetUserSettings(PyObject* self, PyObject* args)
+PyObject* GetUserSettings(PyObject* self, PyObject* args)
 {
     PyErr_SetString(PyExc_NotImplementedError, "get_user_settings is not implemented yet. It will likely be removed in the future.");
     return NULL;
 }
 
-MILLENNIUM PyObject* SetUserSettings(PyObject* self, PyObject* args)
+PyObject* SetUserSettings(PyObject* self, PyObject* args)
 {
     PyErr_SetString(PyExc_NotImplementedError, "set_user_settings_key is not implemented yet. It will likely be removed in the future.");
     return NULL;
 }
 
-MILLENNIUM PyObject* CallFrontendMethod(PyObject* self, PyObject* args, PyObject* kwargs)
+PyObject* CallFrontendMethod(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     const char* methodName = NULL;
     PyObject* parameterList = NULL;
@@ -127,22 +126,22 @@ MILLENNIUM PyObject* CallFrontendMethod(PyObject* self, PyObject* args, PyObject
     );
 }
 
-MILLENNIUM PyObject* GetVersionInfo(PyObject* self, PyObject* args) 
+PyObject* GetVersionInfo(PyObject* self, PyObject* args) 
 { 
     return PyUnicode_FromString(MILLENNIUM_VERSION);
 }
 
-MILLENNIUM PyObject* GetSteamPath(PyObject* self, PyObject* args) 
+PyObject* GetSteamPath(PyObject* self, PyObject* args) 
 {
     return PyUnicode_FromString(SystemIO::GetSteamPath().string().c_str()); 
 }
 
-MILLENNIUM PyObject* GetInstallPath(PyObject* self, PyObject* args) 
+PyObject* GetInstallPath(PyObject* self, PyObject* args) 
 {
     return PyUnicode_FromString(SystemIO::GetInstallPath().string().c_str()); 
 }
 
-MILLENNIUM PyObject* RemoveBrowserModule(PyObject* self, PyObject* args) 
+PyObject* RemoveBrowserModule(PyObject* self, PyObject* args) 
 { 
     int moduleId;
 
@@ -152,21 +151,12 @@ MILLENNIUM PyObject* RemoveBrowserModule(PyObject* self, PyObject* args)
     }
 
     bool success = false;
-    const auto moduleList = WebkitHandler::get().m_hookListPtr;
+    HttpHookManager::get().RemoveHook(moduleId);
 
-    for (auto it = moduleList->begin(); it != moduleList->end();)
-    {
-        if (it->id == moduleId) 
-        {
-            it = moduleList->erase(it);
-            success = true;
-        } 
-        else ++it;
-    }
     return PyBool_FromLong(success);
 }
 
-MILLENNIUM unsigned long long AddBrowserModule(PyObject* args, WebkitHandler::TagTypes type) 
+unsigned long long AddBrowserModule(PyObject* args, HttpHookManager::TagTypes type) 
 {
     const char* moduleItem;
     const char* regexSelector = ".*"; // Default value if no second parameter is provided
@@ -182,7 +172,7 @@ MILLENNIUM unsigned long long AddBrowserModule(PyObject* args, WebkitHandler::Ta
 
     try 
     {
-        WebkitHandler::get().m_hookListPtr->push_back({ path.generic_string(), std::regex(regexSelector), type, g_hookedModuleId });
+        HttpHookManager::get().AddHook({ path.generic_string(), std::regex(regexSelector), type, g_hookedModuleId });
     } 
     catch (const std::regex_error& e) 
     {
@@ -194,20 +184,20 @@ MILLENNIUM unsigned long long AddBrowserModule(PyObject* args, WebkitHandler::Ta
     return g_hookedModuleId;
 }
 
-MILLENNIUM PyObject* AddBrowserCss(PyObject* self, PyObject* args) 
+PyObject* AddBrowserCss(PyObject* self, PyObject* args) 
 { 
-    return PyLong_FromLong((long)AddBrowserModule(args, WebkitHandler::TagTypes::STYLESHEET)); 
+    return PyLong_FromLong((long)AddBrowserModule(args, HttpHookManager::TagTypes::STYLESHEET)); 
 }
 
-MILLENNIUM PyObject* AddBrowserJs(PyObject* self, PyObject* args)  
+PyObject* AddBrowserJs(PyObject* self, PyObject* args)  
 { 
-    return PyLong_FromLong((long)AddBrowserModule(args, WebkitHandler::TagTypes::JAVASCRIPT)); 
+    return PyLong_FromLong((long)AddBrowserModule(args, HttpHookManager::TagTypes::JAVASCRIPT)); 
 }
 
 /* 
 This portion of the API is undocumented but you can use it. 
 */
-MILLENNIUM PyObject* TogglePluginStatus(PyObject* self, PyObject* args)
+PyObject* TogglePluginStatus(PyObject* self, PyObject* args)
 {
     PyObject* input;  // Will only accept a list format
     PythonManager& manager = PythonManager::GetInstance();
@@ -298,11 +288,30 @@ MILLENNIUM PyObject* TogglePluginStatus(PyObject* self, PyObject* args)
         }).detach();
     }
     
-    CoInitializer::ReInjectFrontendShims(g_pluginLoader, false);
+    CoInitializer::ReInjectFrontendShims(g_pluginLoader, true);
     Py_RETURN_NONE;
 }
 
-MILLENNIUM PyObject* EmitReadyMessage(PyObject* self, PyObject* args) 
+/** 
+ * A utility function to check if a plugin is enabled. 
+ */
+PyObject* IsPluginEnable(PyObject* self, PyObject* args)
+{
+    const char* pluginName = NULL;
+
+    if (!PyArg_ParseTuple(args, "s", &pluginName)) 
+    {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to parse parameters");
+        return NULL;
+    }
+
+    std::unique_ptr<SettingsStore> settingsStore = std::make_unique<SettingsStore>();
+    bool isEnabled = settingsStore->IsEnabledPlugin(pluginName);
+    return PyBool_FromLong(isEnabled);
+}
+
+
+PyObject* EmitReadyMessage(PyObject* self, PyObject* args) 
 { 
     PyObject* globals = PyModule_GetDict(PyImport_AddModule("__main__"));
     PyObject* pluginNameObj = PyRun_String("MILLENNIUM_PLUGIN_SECRET_NAME", Py_eval_input, globals, globals);
@@ -321,7 +330,7 @@ MILLENNIUM PyObject* EmitReadyMessage(PyObject* self, PyObject* args)
     return PyBool_FromLong(true);
 }
 
-MILLENNIUM PyObject* GetPluginLogs(PyObject* self, PyObject* args) 
+PyObject* GetPluginLogs(PyObject* self, PyObject* args) 
 {
     nlohmann::json logData = nlohmann::json::array();
     std::unique_ptr<SettingsStore> settingsStore = std::make_unique<SettingsStore>();
@@ -366,11 +375,50 @@ MILLENNIUM PyObject* GetPluginLogs(PyObject* self, PyObject* args)
     return PyUnicode_FromString(logData.dump().c_str());
 }
 
+// Helper to convert month abbreviation to number
+std::string getMonthNumber(const std::string& monthAbbr) 
+{
+    static std::map<std::string, std::string> monthMap 
+    {
+        {"Jan", "01"}, {"Feb", "02"}, {"Mar", "03"}, {"Apr", "04"},
+        {"May", "05"}, {"Jun", "06"}, {"Jul", "07"}, {"Aug", "08"},
+        {"Sep", "09"}, {"Oct", "10"}, {"Nov", "11"}, {"Dec", "12"}
+    };
+    return monthMap[monthAbbr];
+}
+
+std::string getBuildTimestamp() 
+{
+#ifdef __DATE__
+    std::string date = __DATE__;
+#else
+    std::string date = "Jan 01 1970";
+#endif
+
+#ifdef __TIME__
+    std::string time = __TIME__;
+#else
+    std::string time = "00:00:00";
+#endif
+
+    std::string month = getMonthNumber(date.substr(0, 3));
+    std::string day = date.substr(4, 2);
+    std::string year = date.substr(7, 4);
+
+    if (day[0] == ' ') day[0] = '0';
+    return year + "-" + month + "-" + day + "T" + time;
+}
+
+PyObject* GetBuildDate(PyObject* self, PyObject* args)
+{
+    return PyUnicode_FromString(getBuildTimestamp().c_str());
+} 
+
 /** 
  * Method API for the Millennium module
  * This is injected individually into each plugins Python backend, enabling them to interop with Millennium's internal API.
  */
-MILLENNIUM PyMethodDef* GetMillenniumModule()
+PyMethodDef* GetMillenniumModule()
 {
     static PyMethodDef moduleMethods[] = 
     {
@@ -402,13 +450,21 @@ MILLENNIUM PyMethodDef* GetMillenniumModule()
          * Used to toggle the status of a plugin, used in the Millennium settings page.
         */
         { "change_plugin_status",  TogglePluginStatus,              METH_VARARGS, NULL },
+        /** 
+         * @note Internal Use Only 
+         * Used to check if a plugin is enabled, used in the Millennium settings page.
+         */
+        { "is_plugin_enabled",     IsPluginEnable,                  METH_VARARGS, NULL },
+
+        /** For internal use, but can be used if its useful */
+        { "__internal_get_build_date",  GetBuildDate,               METH_VARARGS, NULL },
         {NULL, NULL, 0, NULL} // Sentinel
     };
 
     return moduleMethods;
 }
 
-MILLENNIUM void SetPluginLoader(std::shared_ptr<PluginLoader> pluginLoader) 
+void SetPluginLoader(std::shared_ptr<PluginLoader> pluginLoader) 
 {
     g_pluginLoader = pluginLoader;
 }

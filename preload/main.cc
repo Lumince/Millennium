@@ -28,6 +28,12 @@
  * SOFTWARE.
  */
 
+#ifdef _WIN32
+/** Force include of winsock before windows */
+#include <winsock2.h>
+#include <windows.h>
+#endif
+
 #include <windows.h>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -39,7 +45,7 @@
 #include "cmd.h"
 #include <thread>
 
-static const char* GITHUB_API_URL = "https://api.github.com/repos/shdwmtr/millennium/releases";
+static const char* GITHUB_API_URL = "https://api.github.com/repos/SteamClientHomebrew/Millennium/releases";
 
 /**
  * @brief Unload and release the library from memory.
