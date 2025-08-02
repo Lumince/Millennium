@@ -1,3 +1,33 @@
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { DialogButton, Field, IconsModule, Menu, MenuItem, showContextMenu, Toggle } from '@steambrew/client';
 import { DesktopTooltip, Separator } from '../../components/SteamComponents';
 import { PluginComponent } from '../../types';
@@ -5,6 +35,7 @@ import { FaEllipsisH } from 'react-icons/fa';
 import { Utils } from '../../utils';
 import { Component } from 'react';
 import { PyUninstallPlugin } from '../../utils/ffi';
+import { IconButton } from '../../components/IconButton';
 
 interface PluginComponentProps {
 	plugin: PluginComponent;
@@ -26,6 +57,10 @@ enum TooltipType {
 export class RenderPluginComponent extends Component<PluginComponentProps> {
 	async uninstallPlugin() {
 		const { plugin, refetchPlugins } = this.props;
+
+		const shouldUninstall = await Utils.ShowMessageBox(`Are you sure you want to uninstall ${plugin.data.common_name}?`, 'Heads up!');
+		if (!shouldUninstall) return;
+
 		const success = await PyUninstallPlugin({ pluginName: plugin.data.name });
 
 		if (success == false) {
@@ -94,12 +129,16 @@ export class RenderPluginComponent extends Component<PluginComponentProps> {
 				icon={content}
 				padding="standard"
 				bottomSeparator={isLastPlugin ? 'none' : 'standard'}
-				data-icon-status={type}
+				className="MillenniumPlugins_PluginField"
+				data-plugin-name={plugin.data.name}
+				data-plugin-version={plugin.data.version}
+				data-plugin-common-name={plugin.data.common_name}
+				data-plugin-status={type}
 			>
 				<Toggle key={plugin.data.name} disabled={plugin.data.name === 'core'} value={isEnabled} onChange={onSelectionChange.bind(null, index)} />
-				<DialogButton onClick={this.showCtxMenu} style={{ width: '32px' }}>
+				<IconButton onClick={this.showCtxMenu}>
 					<FaEllipsisH />
-				</DialogButton>
+				</IconButton>
 			</Field>
 		);
 	}

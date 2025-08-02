@@ -55,44 +55,14 @@ static bool bHasCheckedConnection = false;
 class SocketHelpers
 {
 private:
+    u_short debuggerPort;
 
-    short debuggerPort;
-
-    const short GetDebuggerPort()
+    const u_short GetDebuggerPort()
     {
         #ifdef _WIN32
         {
             std::unique_ptr<StartupParameters> startupParams = std::make_unique<StartupParameters>();
-
-            for (const auto& parameter : startupParams->GetArgumentList())
-            {
-                size_t pos = parameter.find('=');
-
-                if (pos == std::string::npos)
-                {
-                    continue;
-                }
-
-                std::string key = parameter.substr(0, pos);
-                std::string value = parameter.substr(pos + 1);
-
-                if (key == "-devtools-port")
-                {
-                    try
-                    {
-                        return std::stoi(value);
-                    }
-                    catch (const std::invalid_argument& e) {
-                        LOG_ERROR("failed to parse dev-tools port due to invalid argument. exception -> {}", e.what());
-                    }
-                    catch (const std::out_of_range& e) {
-                        LOG_ERROR("failed to parse dev-tools port due to too large of an integer. exception -> {}", e.what());
-                    }
-                    catch (...) {
-                        LOG_ERROR("failed to parse dev-tools port due to an unknown error. exception -> {}");
-                    }
-                }
-            }
+            return startupParams->GetRemoteDebuggerPort();
         }
         #endif
         return 8080;
@@ -100,7 +70,7 @@ private:
 
     const std::string GetDebuggerUrl()
     {
-        return fmt::format("http://localhost:{}", debuggerPort);
+        return fmt::format("http://127.0.0.1:{}", debuggerPort);
     }
 
     struct SteamConnectionProps
@@ -244,12 +214,22 @@ public:
 
     void ConnectSocket(ConnectSocketProps socketProps)
     {
+        std::string socketUrl;
         websocketpp::client<websocketpp::config::asio_client> socketClient;
 
         const auto [commonName, fetchSocketUrl, onConnect, onMessage] = socketProps;
-        
-        // Fetch socket URL
-        const std::string socketUrl = fetchSocketUrl();
+ 
+        try
+        {
+            socketUrl = fetchSocketUrl();
+        }
+        /** The request was broke early before it was received. Likely because Millennium is shutting down. */
+        catch (HttpError& exception)
+        {
+            Logger.Warn("Failed to get Steam browser context: {}", exception.GetMessage());
+            return;
+        }
+
         if (socketUrl.empty())
         {
             LOG_ERROR("[{}] Socket URL is empty. Aborting connection.", commonName);
@@ -276,7 +256,7 @@ public:
 
             websocketpp::lib::error_code errorCode;
             auto con = socketClient.get_connection(socketUrl, errorCode);
-    
+
             if (errorCode)
             {
                 LOG_ERROR("[{}] Failed to establish connection: {} [{}]", commonName, errorCode.message(), errorCode.value());

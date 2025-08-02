@@ -1,3 +1,31 @@
+# ==================================================
+#   _____ _ _ _             _                     
+#  |     |_| | |___ ___ ___|_|_ _ _____           
+#  | | | | | | | -_|   |   | | | |     |          
+#  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|          
+# 
+# ==================================================
+# 
+# Copyright (c) 2025 Project Millennium
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import importlib.metadata
 import json
 import os
@@ -13,10 +41,9 @@ def get_installed_packages():
     logger.log("Installed packages:")
     
     package_map = {dist.metadata["Name"]: dist.version for dist in importlib.metadata.distributions()}
-    
-    for name, version in package_map.items():
-        logger.log(f"  {name}=={version}")
-    
+    str_packages = [f"{name}=={version}" for name, version in package_map.items()]
+
+    logger.log(" ".join(str_packages))
     return package_map
 
 def process_output_handler(proc, outfile, terminate_flag):
@@ -40,8 +67,11 @@ def pip(cmd, config: Config):
     os.makedirs(os.path.dirname(pip_logs), exist_ok=True)
 
     with open(pip_logs, 'w') as f:
+        command = [python_bin, '-m', 'pip'] + cmd + ["--no-warn-script-location"]
+        logger.log(f"Running command: {' '.join(command)}")
+
         proc = subprocess.Popen(
-            [python_bin, '-m', 'pip'] + cmd + ["--no-warn-script-location"],
+            command,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             bufsize=1, universal_newlines=True,
             creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == 'Windows' else 0
@@ -55,6 +85,18 @@ def pip(cmd, config: Config):
         output_handler_thread.join()
 
         if proc.returncode != 0:
+            logs_file = os.path.join(os.environ.get("MILLENNIUM__LOGS_PATH", pip_logs), "pipx_log.log")
+            str_error = f"Millennium's package manager failed with exit code {proc.returncode}. This is likely a fatal issue, and will cause breaking side effects on loaded plugins, and or Millennium. Please check the log file at {logs_file} for more details."
+
+            if platform.system() == 'Windows':
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(
+                    None,
+                    str_error,
+                    "Millennium - Package manager error",
+                    0x10 | 0x0
+                )
+
             logger.error(f"PIP failed with exit code {proc.returncode}")
 
 

@@ -11,3 +11,8 @@
 /examples/plugin/.millennium
 
 /assets/src/env.ts
+
+/.direnv
+/result
+/sdk/result
+**/.DS_Store

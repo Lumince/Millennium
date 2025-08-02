@@ -1,3 +1,33 @@
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { callable, DialogButton, Field, Menu, MenuItem, pluginSelf, showContextMenu, showModal } from '@steambrew/client';
 import { ThemeItem } from '../../types';
 import { Separator } from '../../components/SteamComponents';
@@ -8,6 +38,7 @@ import { FaCheck, FaEllipsisH } from 'react-icons/fa';
 import { SiKofi } from 'react-icons/si';
 import { Component } from 'react';
 import { PyUninstallTheme } from '../../utils/ffi';
+import { IconButton } from '../../components/IconButton';
 
 interface ThemeItemComponentProps {
 	theme: ThemeItem;
@@ -15,6 +46,7 @@ interface ThemeItemComponentProps {
 	activeTheme?: string;
 	onChangeTheme: (item: ThemeItem) => void;
 	onUseDefault: () => void;
+	fetchThemes: () => Promise<void>;
 }
 
 interface ThemeItemComponentState {
@@ -96,11 +128,18 @@ export class ThemeItemComponent extends Component<ThemeItemComponentProps, Theme
 		Utils.BrowseLocalFolder(themesPath);
 	}
 
-	uninstallTheme() {
-		const { theme } = this.props;
+	async uninstallTheme() {
+		const { theme, fetchThemes } = this.props;
+
+		const shouldUninstall = await Utils.ShowMessageBox(`Are you sure you want to uninstall ${theme.data.name}?`, 'Heads up!');
+		if (!shouldUninstall) return;
 
 		PyUninstallTheme({ owner: theme.data.github.owner, repo: theme.data.github.repo_name }).then(() => {
-			SteamClient.Browser.RestartJSContext();
+			if (this.isActive) {
+				SteamClient.Browser.RestartJSContext();
+			} else {
+				fetchThemes();
+			}
 		});
 	}
 
@@ -109,8 +148,10 @@ export class ThemeItemComponent extends Component<ThemeItemComponentProps, Theme
 		const { shouldShowMore } = this.state;
 		const isActive = this.isActive;
 
+		console.log('Menu', Menu);
+
 		showContextMenu(
-			<Menu label="MillenniumPluginContextMenu">
+			<Menu label={theme?.data?.name}>
 				<MenuItem disabled tone="emphasis" bInteractableItem={false}>
 					{theme?.data?.name} {theme?.data?.version && <>v{theme.data.version}</>}
 				</MenuItem>
@@ -158,18 +199,21 @@ export class ThemeItemComponent extends Component<ThemeItemComponentProps, Theme
 				}
 				padding="standard"
 				bottomSeparator={isLastItem ? 'none' : 'standard'}
+				className="MillenniumThemes_ThemeItem"
 				{...(isActive && { icon: <FaCheck /> })}
 				{...(shouldShowMore && { description: this.renderExpandableShowMore() })}
+				data-theme-name={theme?.data?.name}
+				data-theme-folder-name-on-disk={theme?.native}
 				data-theme-active={isActive}
 			>
 				{shouldShowMore && theme?.data?.funding?.kofi && (
-					<DialogButton onClick={() => Utils.OpenUrl('https://ko-fi.com/' + theme.data.funding.kofi)} style={{ width: '32px' }}>
+					<IconButton onClick={() => Utils.OpenUrl('https://ko-fi.com/' + theme.data.funding.kofi)}>
 						<SiKofi />
-					</DialogButton>
+					</IconButton>
 				)}
-				<DialogButton onClick={this.showCtxMenu} style={{ width: '32px' }}>
+				<IconButton onClick={this.showCtxMenu}>
 					<FaEllipsisH />
-				</DialogButton>
+				</IconButton>
 			</Field>
 		);
 	}

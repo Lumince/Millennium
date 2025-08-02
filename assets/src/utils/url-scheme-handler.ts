@@ -1,5 +1,34 @@
-import { callable, Millennium } from '@steambrew/client';
-import { OpenSettingsTab, SettingsTabs } from '../settings';
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import { callable, Millennium, Navigation } from '@steambrew/client';
 import { PluginComponent, ThemeItem } from '../types';
 import { Logger } from './Logger';
 
@@ -14,51 +43,48 @@ const UpdatePluginStatus = callable<[{ pluginJson: string }], any>('ChangePlugin
  * steam://millennium URL support.
  *
  * Example:
- * "steam://millennium" -> Open Millennium dialog
- * "steam://millennium/updates" -> Open the "Updates" tab
- * "steam://millennium/themes/disable" -> Use default theme
- * "steam://millennium/themes/enable/aerothemesteam" -> Enable the Office 2007 theme using its internal name
- * "steam://millennium/plugins/disable/steam-db" -> Disable the SteamDB plugin using its internal name
- * "steam://millennium/plugins/disable" -> Disable all plugins
+ * "steam://millennium/settings" -> Open Millennium dialog
+ * "steam://millennium/settings/general" -> Open Millennium dialog
+ * "steam://millennium/settings/updates" -> Open the "Updates" tab
+ * "steam://millennium/settings/themes/disable" -> Use default theme
+ * "steam://millennium/settings/themes/enable/aerothemesteam" -> Enable the Office 2007 theme using its internal name
+ * "steam://millennium/settings/plugins/disable/steam-db" -> Disable the SteamDB plugin using its internal name
+ * "steam://millennium/settings/plugins/disable" -> Disable all plugins
+ * "steam://millennium/settings/devtools/open" -> Open the DevTools window
  */
 export const OnRunSteamURL = async (_: number, url: string) => {
-	const [tab, action, item] = url.split('/').slice(3) as [SettingsTabs, string, string];
-	Logger.Log('OnRunSteamURL: Executing %o', url);
+	const [context, action, option, parameter] = url
+		.replace(/^steam:\/{1,2}/, '/')
+		.split('/')
+		.filter((r) => r)
+		.slice(1);
 
-	if (!action) {
-		const callback = (popup: any) => {
-			if (popup.title !== 'Millennium') {
-				return;
-			}
-
-			// It's async, but it's not used (or needed) here since
-			// PopupManager.AddPopupCreatedCallback doesn't support it.
-			OpenSettingsTab(popup, tab);
-		};
-
-		if (!g_PopupManager.m_rgPopupCreatedCallbacks.some((e: any) => e === callback)) {
-			Millennium.AddWindowCreateHook(callback);
-		}
-		/** FIXME: Since the new Millennium popup window requires it to be rendered from within a React component, we can't do this as of right now */
-		// ShowSettingsModal();
+	if (context !== 'settings') {
+		Logger.Log('OnRunSteamURL: Invalid context %o, expected "settings"', context);
 		return;
 	}
 
-	if ((tab as string) === 'devtools' && action === 'open') {
+	if (!option) {
+		Logger.Log('OnRunSteamURL: No option specified, navigating to settings');
+		Navigation.Navigate('/millennium/settings/' + action);
+		return;
+	}
+
+	if (action === 'devtools' && parameter === 'open') {
 		// Open the DevTools window
 		SteamClient.Browser.OpenDevTools();
 	}
 
-	if (tab === 'plugins') {
+	if (action === 'plugins') {
 		// God, why
 		const plugins: PluginComponent[] = JSON.parse(await FindAllPlugins()).map((e: PluginComponent) => ({ ...e, plugin_name: e.data.name }));
-		if (item) {
-			if (!plugins.some((e) => e.data.name === item)) {
+		if (parameter) {
+			if (!plugins.some((e) => e.data.name === parameter)) {
 				return;
 			}
 
-			const neededPlugin = plugins.find((e) => e.data.name === item);
-			neededPlugin.enabled = action === 'enable';
+			const neededPlugin = plugins.find((e) => e.data.name === parameter);
+			neededPlugin.enabled = option === 'enable';
 		} else {
 			// Disable them all
 			for (const plugin of plugins) {
@@ -71,10 +97,10 @@ export const OnRunSteamURL = async (_: number, url: string) => {
 		SteamClient.Browser.RestartJSContext();
 	}
 
-	if (tab === 'themes') {
+	if (action === 'themes') {
 		const themes: ThemeItem[] = JSON.parse(await FindAllThemes());
-		const theme = themes.find((e) => e.native === item);
-		const theme_name = !!theme && action === 'enable' ? theme.native : DEFAULT_THEME_NAME;
+		const theme = themes.find((e) => e.native === parameter);
+		const theme_name = !!theme && option === 'enable' ? theme.native : DEFAULT_THEME_NAME;
 
 		ChangeTheme({ theme_name });
 		SteamClient.Browser.RestartJSContext();

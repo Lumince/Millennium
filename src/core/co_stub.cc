@@ -32,19 +32,20 @@
 #include <vector>
 #include <fmt/core.h>
 #include "co_spawn.h"
-#include "log.h"
+#include "internal_logger.h"
 #include "loader.h"
-#include "web_load.h"
+#include "http_hooks.h"
 #include "ffi.h"
 #include <tuple>
-#include "logger.h"
+#include "plugin_logger.h"
 #include <mutex>
 #include <condition_variable>
 #include <thread>
 #include "encoding.h"
 #include "url_parser.h"
 #include <env.h>
-#include "fvisible.h"
+
+#include <secure_socket.h>
 
 static std::string addedScriptOnNewDocumentId = "";
 
@@ -87,12 +88,12 @@ public:
  * Error Handling:
  * - If the `client_api.js` file cannot be read, an error is logged, and a message box is shown on Windows.
  */
-MILLENNIUM const std::string GetBootstrapModule(const std::vector<std::string> scriptModules, const uint16_t ftpPort, const uint16_t ipcPort)
+const std::string GetBootstrapModule(const std::vector<std::string> scriptModules)
 {
     std::string scriptModuleArray;
-    std::string scriptContents = SystemIO::ReadFileSync((std::filesystem::path(GetEnv("MILLENNIUM__SHIMS_PATH")) / "preload.js").string());
+    std::optional<std::string> millenniumPreloadPath = SystemIO::GetMillenniumPreloadPath();
 
-    if (scriptContents.empty())
+    if (!millenniumPreloadPath.has_value())
     {
         LOG_ERROR("Missing client preload module. Please re-install Millennium.");
         #ifdef _WIN32
@@ -105,9 +106,10 @@ MILLENNIUM const std::string GetBootstrapModule(const std::vector<std::string> s
         scriptModuleArray.append(fmt::format("\"{}\"{}", scriptModules[i], (i == scriptModules.size() - 1 ? "" : ",")));
     }
 
-    const std::filesystem::path preloadPath = std::filesystem::path(GetEnv("MILLENNIUM__SHIMS_PATH")) / "preload.js";
-    const std::string ftpPath = UrlFromPath(fmt::format("http://localhost:{}/", ftpPort), preloadPath.generic_string());
-    const std::string scriptContent = fmt::format("module.default({}, [{}]);", ipcPort, scriptModuleArray);
+    const std::string millenniumAuthToken = GetAuthToken();
+
+    const std::string ftpPath = UrlFromPath("https://millennium.ftp/", millenniumPreloadPath.value_or(std::string()));
+    const std::string scriptContent = fmt::format("(new module.default).StartPreloader('{}', [{}]);", millenniumAuthToken, scriptModuleArray);
 
     return fmt::format("import('{}').then(module => {{ {} }})", ftpPath, scriptContent);
 }
@@ -125,7 +127,7 @@ MILLENNIUM const std::string GetBootstrapModule(const std::vector<std::string> s
  * - If the `sys` module cannot be imported, an error is logged.
  * - If the `sys.path` attribute cannot be accessed, no action is taken.
  */
-MILLENNIUM const void AppendSysPathModules(std::vector<std::filesystem::path> sitePackages) 
+const void AppendSysPathModules(std::vector<std::filesystem::path> sitePackages) 
 {
     PyObject *sysModule = PyImport_ImportModule("sys");
     if (!sysModule) 
@@ -166,7 +168,7 @@ MILLENNIUM const void AppendSysPathModules(std::vector<std::filesystem::path> si
  * - If the `site` module cannot be imported, the error is printed and logged.
  * - If the `addsitedir` function cannot be retrieved or called, an error is printed and logged.
  */
-MILLENNIUM void AddSitePackagesDirectory(std::filesystem::path customPath)
+void AddSitePackagesDirectory(std::filesystem::path customPath)
 {
     PyObject *siteModule = PyImport_ImportModule("site");
 
@@ -199,7 +201,7 @@ MILLENNIUM void AddSitePackagesDirectory(std::filesystem::path customPath)
  * 
  * @param global_dict The global dictionary of the Python interpreter.
  */
-MILLENNIUM void StartPluginBackend(PyObject* global_dict, std::string pluginName) 
+void StartPluginBackend(PyObject* global_dict, std::string pluginName) 
 {
     const auto PrintError = [&pluginName]() 
     {
@@ -261,7 +263,7 @@ MILLENNIUM void StartPluginBackend(PyObject* global_dict, std::string pluginName
  * - If the builtins dictionary cannot be retrieved, a `RuntimeError` is raised.
  * - If creating the placeholder function fails, a `RuntimeError` is raised.
  */
-MILLENNIUM void SetupPluginSettings()
+void SetupPluginSettings()
 {
     PyObject* builtins = PyEval_GetBuiltins();
     if (!builtins) 
@@ -312,7 +314,7 @@ MILLENNIUM void SetupPluginSettings()
  * - If the `__builtins__` dictionary cannot be retrieved, a `RuntimeError` is raised.
  * - If setting the `MILLENNIUM_PLUGIN_SECRET_NAME` in `__builtins__` fails, a `RuntimeError` is raised.
  */
-MILLENNIUM const void SetPluginSecretName(PyObject* globalDictionary, const std::string& pluginName) 
+const void SetPluginSecretName(PyObject* globalDictionary, const std::string& pluginName) 
 {
     /** Set the secret name in the global dictionary, i.e the global scope */
     PyDict_SetItemString(globalDictionary, "MILLENNIUM_PLUGIN_SECRET_NAME", PyUnicode_FromString(pluginName.c_str()));
@@ -342,7 +344,7 @@ MILLENNIUM const void SetPluginSecretName(PyObject* globalDictionary, const std:
  *
  * Both paths are converted to strings and set as Python variables in the global dictionary.
  */
-MILLENNIUM const void SetPluginEnvironmentVariables(PyObject* globalDictionary, const SettingsStore::PluginTypeSchema& plugin) 
+const void SetPluginEnvironmentVariables(PyObject* globalDictionary, const SettingsStore::PluginTypeSchema& plugin) 
 {
     PyDict_SetItemString(globalDictionary, "PLUGIN_BASE_DIR", PyUnicode_FromString(plugin.pluginBaseDirectory.generic_string().c_str()));
     PyDict_SetItemString(globalDictionary, "__file__", PyUnicode_FromString((plugin.backendAbsoluteDirectory / "main.py").generic_string().c_str()));
@@ -365,7 +367,7 @@ MILLENNIUM const void SetPluginEnvironmentVariables(PyObject* globalDictionary, 
  * Error Handling:
  * - If any step of the process fails (e.g., file opening, module import), the error is logged and the backend load is marked as failed.
  */
-MILLENNIUM const void CoInitializer::BackendStartCallback(SettingsStore::PluginTypeSchema plugin) 
+const void CoInitializer::BackendStartCallback(SettingsStore::PluginTypeSchema plugin) 
 {
     PyObject* globalDictionary = PyModule_GetDict(PyImport_AddModule("__main__"));
     const auto backendMainModule = plugin.backendAbsoluteDirectory.generic_string();
@@ -448,14 +450,30 @@ MILLENNIUM const void CoInitializer::BackendStartCallback(SettingsStore::PluginT
             if (std::chrono::steady_clock::now() - startTime > std::chrono::seconds(30)) 
             {
                 std::string errorMessage = fmt::format(
-                    "\nIt appears that the plugin '{}' either forgot to call `Millennium.ready()` or is I/O blocking the main thread. "
-                    "Your _load() function MUST NOT block the main thread, logic that runs for the duration of the plugin should run in true parallelism with threading."
-                    "\nLearn more: https://www.geeksforgeeks.org/multithreading-python-set-1/"
-                    "\nThis error is not fatal but this plugin will NOT be able to properly shutdown with may leave steam hanging on exit.", plugin.pluginName
+                    "\nIt appears that the plugin '{}' either forgot to call `Millennium.ready()` or is I/O blocking the main thread. We've flagged it as a failure to load."
+                    "Your _load() function MUST NOT block the main thread, logic that runs for the duration of the plugin should run in true parallelism with threading.", plugin.pluginName
                 );
 
                 LOG_ERROR(errorMessage);
                 ErrorToLogger(plugin.pluginName, errorMessage);
+
+                #ifdef _WIN32
+                const int result = MessageBoxA(
+                    NULL, 
+                    fmt::format("It appears that the plugin '{}' has either crashed or is taking too long to respond, this may cause side effects or break the Steam UI. Would you like to disable it on next Steam startup?", plugin.pluginName).c_str(), 
+                    "Millennium - Startup Error", 
+                    MB_ICONERROR | MB_YESNO
+                );
+
+                if (result == IDYES) 
+                {
+                    std::unique_ptr<SettingsStore> settingsStore = std::make_unique<SettingsStore>();
+                    settingsStore->TogglePluginStatus(plugin.pluginName, false);
+                }
+                #endif
+
+                CoInitializer::BackendCallbacks& backendHandler = CoInitializer::BackendCallbacks::getInstance();
+                backendHandler.BackendLoaded({ plugin.pluginName, CoInitializer::BackendCallbacks::BACKEND_LOAD_FAILED });
 
                 break;
             }
@@ -472,8 +490,6 @@ MILLENNIUM const void CoInitializer::BackendStartCallback(SettingsStore::PluginT
 /**
  * Constructs a module for loading plugins based on the given FTP and IPC ports.
  *
- * @param {uint16_t} ftpPort - The FTP port used for accessing the frontend files.
- * @param {uint16_t} ipcPort - The IPC port used for communication.
  * @returns {std::string} - A string representing the constructed module containing the list of plugin URLs and bootstrap configuration.
  *
  * This function performs the following tasks:
@@ -484,7 +500,7 @@ MILLENNIUM const void CoInitializer::BackendStartCallback(SettingsStore::PluginT
  *
  * The constructed module is returned as a string.
  */
-MILLENNIUM const std::string ConstructOnLoadModule(uint16_t ftpPort, uint16_t ipcPort) 
+const std::string ConstructOnLoadModule() 
 {
     std::unique_ptr<SettingsStore> settingsStore = std::make_unique<SettingsStore>();
     std::vector<SettingsStore::PluginTypeSchema> plugins = settingsStore->ParseAllPlugins();
@@ -499,10 +515,10 @@ MILLENNIUM const std::string ConstructOnLoadModule(uint16_t ftpPort, uint16_t ip
         }
 
         const auto frontEndAbs = plugin.frontendAbsoluteDirectory.generic_string();
-        scriptImportTable.push_back(UrlFromPath(fmt::format("http://localhost:{}/", ftpPort), frontEndAbs));
+        scriptImportTable.push_back(UrlFromPath("https://millennium.ftp/", frontEndAbs));
     }
 
-    return GetBootstrapModule(scriptImportTable, ftpPort, ipcPort);
+    return GetBootstrapModule(scriptImportTable);
 }
 
 /**
@@ -511,7 +527,7 @@ MILLENNIUM const std::string ConstructOnLoadModule(uint16_t ftpPort, uint16_t ip
  * 
  * @note this function is only applicable to Windows
  */
-MILLENNIUM const void UnPatchSharedJSContext()
+const void UnPatchSharedJSContext()
 {
     #ifdef _WIN32
     Logger.Log("Restoring SharedJSContext...");
@@ -574,9 +590,6 @@ MILLENNIUM const void UnPatchSharedJSContext()
 
 /**
  * Notifies the frontend of the backend load and handles script injection and state updates.
- *
- * @param {uint16_t} ftpPort - The FTP port used to access frontend resources.
- * @param {uint16_t} ipcPort - The IPC port used for backend communication.
  * 
  * This function performs the following tasks:
  * 1. Logs the start of the backend load notification process.
@@ -591,13 +604,10 @@ MILLENNIUM const void UnPatchSharedJSContext()
  * Error Handling:
  * - If any issues occur during the message processing, errors are logged with details.
  */
-MILLENNIUM void OnBackendLoad(uint16_t ftpPort, uint16_t ipcPort, bool reloadFrontend)
+void OnBackendLoad(bool reloadFrontend)
 {
     UnPatchSharedJSContext(); // Restore the original SharedJSContext
     Logger.Log("Notifying frontend of backend load...");
-
-    static uint16_t m_ftpPort = ftpPort;
-    static uint16_t m_ipcPort = ipcPort;
 
     enum PageMessage
     {
@@ -619,7 +629,7 @@ MILLENNIUM void OnBackendLoad(uint16_t ftpPort, uint16_t ipcPort, bool reloadFro
             if (messageId == PAGE_ENABLE)
             {
                 Logger.Log("Injecting script to evaluate on new document...");
-                Sockets::PostShared({ {"id", PAGE_SCRIPT }, {"method", "Page.addScriptToEvaluateOnNewDocument"}, {"params", {{ "source", ConstructOnLoadModule(m_ftpPort, m_ipcPort) }}} });
+                Sockets::PostShared({ {"id", PAGE_SCRIPT }, {"method", "Page.addScriptToEvaluateOnNewDocument"}, {"params", {{ "source", ConstructOnLoadModule() }}} });
             }
             if (messageId == PAGE_SCRIPT)
             {
@@ -641,9 +651,7 @@ MILLENNIUM void OnBackendLoad(uint16_t ftpPort, uint16_t ipcPort, bool reloadFro
                     if (reloadFrontend) Sockets::PostShared({ {"id", PAGE_RELOAD }, {"method", "Page.reload"}, { "params", { { "ignoreCache", true } }} });
                     return;
                 }
-
-                Logger.Log(eventMessage.dump(4));
-
+                
                 Logger.Log("Successfully notified frontend...");
                 JavaScript::SharedJSMessageEmitter::InstanceRef().RemoveListener("msg", listenerId);
             }
@@ -669,13 +677,11 @@ MILLENNIUM void OnBackendLoad(uint16_t ftpPort, uint16_t ipcPort, bool reloadFro
  * 
  * This function injects the frontend shims by registering a callback function to be called when the backend is loaded.
  * 
- * @param {uint16_t} ftpPort - The FTP port used to access frontend resources.
- * @param {uint16_t} ipcPort - The IPC port used for backend communication.
  */
-MILLENNIUM const void CoInitializer::InjectFrontendShims(uint16_t ftpPort, uint16_t ipcPort, bool reloadFrontend) 
+const void CoInitializer::InjectFrontendShims(bool reloadFrontend) 
 {
     BackendCallbacks& backendHandler = BackendCallbacks::getInstance();
-    backendHandler.RegisterForLoad(std::bind(OnBackendLoad, ftpPort, ipcPort, reloadFrontend));
+    backendHandler.RegisterForLoad(std::bind(OnBackendLoad, reloadFrontend));
 }
 
 /**
@@ -685,7 +691,7 @@ MILLENNIUM const void CoInitializer::InjectFrontendShims(uint16_t ftpPort, uint1
  * 
  * @param {std::shared_ptr<PluginLoader>} pluginLoader - The plugin loader instance.
  */
-MILLENNIUM const void CoInitializer::ReInjectFrontendShims(std::shared_ptr<PluginLoader> pluginLoader, bool reloadFrontend)
+const void CoInitializer::ReInjectFrontendShims(std::shared_ptr<PluginLoader> pluginLoader, bool reloadFrontend)
 {
     pluginLoader->InjectWebkitShims();
 

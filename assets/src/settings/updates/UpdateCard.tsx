@@ -1,8 +1,40 @@
+/**
+ * ==================================================
+ *   _____ _ _ _             _
+ *  |     |_| | |___ ___ ___|_|_ _ _____
+ *  | | | | | | | -_|   |   | | | |     |
+ *  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|
+ *
+ * ==================================================
+ *
+ * Copyright (c) 2025 Project Millennium
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { DialogButton, DialogButtonPrimary, Field, IconsModule, ProgressBarWithInfo } from '@steambrew/client';
 import { settingsClasses } from '../../utils/classes';
-import { Component, ReactNode } from 'react';
+import { Component, createRef, ReactNode } from 'react';
 import Markdown from 'markdown-to-jsx';
 import { locale } from '../../../locales';
+import { IconButton } from '../../components/IconButton';
+import { DesktopTooltip } from '../../components/SteamComponents';
 
 interface UpdateProps {
 	message: string;
@@ -18,6 +50,7 @@ interface UpdateCardProps {
 	isUpdating: boolean;
 	progress: number;
 	statusText: string;
+	toolTipText?: string;
 	onUpdateClick: () => void;
 }
 
@@ -34,14 +67,37 @@ interface UpdateCardState {
 }
 
 export class UpdateCard extends Component<UpdateCardProps, UpdateCardState> {
+	private descriptionRef: React.RefObject<HTMLDivElement>;
+	private descriptionHeight: number = 0;
+
 	constructor(props: UpdateCardProps) {
 		super(props);
 		this.state = {
 			showingMore: false,
 		};
 
+		this.descriptionRef = createRef();
+
 		this.handleToggle = this.handleToggle.bind(this);
 		this.makeAnchorExternalLink = this.makeAnchorExternalLink.bind(this);
+	}
+
+	componentDidMount() {
+		this.measureDescriptionHeight();
+	}
+
+	componentDidUpdate(prevProps: UpdateCardProps, prevState: UpdateCardState) {
+		// Re-measure if content or visibility changes
+		if (prevProps.update?.message !== this.props.update?.message || prevState.showingMore !== this.state.showingMore) {
+			this.measureDescriptionHeight();
+		}
+	}
+
+	private measureDescriptionHeight() {
+		if (this.descriptionRef.current) {
+			this.descriptionHeight = this.descriptionRef.current.offsetHeight;
+			this.forceUpdate(); // Needed to re-render with the measured height
+		}
 	}
 
 	handleToggle() {
@@ -49,14 +105,13 @@ export class UpdateCard extends Component<UpdateCardProps, UpdateCardState> {
 	}
 
 	private showInteractables() {
-		const { isUpdating, statusText, progress, onUpdateClick } = this.props;
+		const { isUpdating, statusText, progress, onUpdateClick, update, toolTipText } = this.props;
 
 		if (isUpdating) {
 			return (
 				<ProgressBarWithInfo
 					// @ts-ignore
-					style={{ padding: 'unset' }}
-					className="UpdaterProgressBar"
+					className="MillenniumUpdates_ProgressBar"
 					sOperationText={statusText}
 					nProgress={progress}
 					nTransitionSec={1000}
@@ -65,31 +120,35 @@ export class UpdateCard extends Component<UpdateCardProps, UpdateCardState> {
 		}
 
 		return (
-			<DialogButtonPrimary onClick={onUpdateClick} className={`MillenniumIconButton ${settingsClasses.SettingsDialogButton}`} data-update-button>
-				Download <IconsModule.Download key="download-icon" />
-			</DialogButtonPrimary>
+			<DesktopTooltip toolTipContent={`Update ${toolTipText || update.name}`} direction="left">
+				<IconButton onClick={onUpdateClick}>
+					<IconsModule.Download key="download-icon" />
+				</IconButton>
+			</DesktopTooltip>
 		);
 	}
 
 	private makeAnchorExternalLink({ children, ...props }: { children: any; [key: string]: any }) {
 		return (
-			<a target="_blank" {...props}>
+			<a target="_blank" rel="noopener noreferrer" {...props}>
 				{children}
 			</a>
 		);
 	}
 
-	RenderDescription() {
+	private renderDescription() {
 		const { update } = this.props;
 
 		return (
-			<div className="MillenniumUpdates_Description">
-				<div>
-					<b>{locale.updatePanelReleasedTag}</b> {update?.date}
-				</div>
-				<div>
-					<b>{locale.updatePanelReleasePatchNotes}</b>&nbsp;
-					<Markdown options={{ overrides: { a: { component: this.makeAnchorExternalLink } } }}>{update?.message}</Markdown>
+			<div className="MillenniumUpdates_Description" style={{ height: this.descriptionHeight }}>
+				<div ref={this.descriptionRef}>
+					<div>
+						<b>{locale.updatePanelReleasedTag}</b> {update?.date}
+					</div>
+					<div>
+						<b>{locale.updatePanelReleasePatchNotes}</b>&nbsp;
+						<Markdown options={{ overrides: { a: { component: this.makeAnchorExternalLink } } }}>{update?.message}</Markdown>
+					</div>
 				</div>
 			</div>
 		);
@@ -102,15 +161,16 @@ export class UpdateCard extends Component<UpdateCardProps, UpdateCardState> {
 		return (
 			<Field
 				key={index}
-				className="MillenniumUpdateField"
-				label={<div className="MillenniumUpdates_Label">{update.name}</div>}
+				className="MillenniumUpdates_Field"
+				label={update.name}
 				bottomSeparator={index === totalCount - 1 ? 'none' : 'standard'}
-				{...(showingMore && { description: this.RenderDescription() })}
+				description={this.renderDescription()}
+				data-expanded={showingMore}
 			>
 				{this.showInteractables()}
-				<DialogButton onClick={this.handleToggle} className={`MillenniumIconButton ${settingsClasses.SettingsDialogButton}`}>
-					<IconsModule.Carat direction={showingMore ? 'up' : 'down'} />
-				</DialogButton>
+				<IconButton onClick={this.handleToggle} className="MillenniumUpdates_ExpandButton">
+					<IconsModule.Carat direction="up" />
+				</IconButton>
 			</Field>
 		);
 	}

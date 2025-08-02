@@ -32,10 +32,10 @@
 #include "co_spawn.h"
 #include "loader.h"
 #include <future>
-#include "fvisible.h"
+
 #include <mutex>
 #include <condition_variable>
-#include "fvisible.h"
+
 
 struct EvalResult 
 {
@@ -64,7 +64,7 @@ struct EvalResult
  * - Uses a `std::mutex` and `std::condition_variable` to ensure safe access to shared data.
  * - The listener is removed once a response is received.
  */
-MILLENNIUM const EvalResult ExecuteOnSharedJsContext(std::string javaScriptEval) 
+const EvalResult ExecuteOnSharedJsContext(std::string javaScriptEval) 
 {
     std::mutex mtx;
     std::condition_variable cv;
@@ -144,41 +144,65 @@ MILLENNIUM const EvalResult ExecuteOnSharedJsContext(std::string javaScriptEval)
 /**
  * Escapes special characters in a JavaScript string.
  */
+#include <string>
+#include <sstream>
+#include <iomanip>
+
 std::string EscapeJavaScriptString(const std::string& input)
 {
     std::ostringstream escaped;
-    escaped << std::hex;
-
-    for (unsigned char c : input) 
+    
+    for (size_t i = 0; i < input.length(); ++i)
     {
-        switch (c) 
+        unsigned char c = static_cast<unsigned char>(input[i]);
+        
+        switch (c)
         {
             case '\"': escaped << "\\\""; break;
             case '\\': escaped << "\\\\"; break;
-            case '\b': escaped << "\\b";  break;
-            case '\f': escaped << "\\f";  break;
-            case '\n': escaped << "\\n";  break;
-            case '\r': escaped << "\\r";  break;
-            case '\t': escaped << "\\t";  break;
-
+            case '\b': escaped << "\\b"; break;
+            case '\f': escaped << "\\f"; break;
+            case '\n': escaped << "\\n"; break;
+            case '\r': escaped << "\\r"; break;
+            case '\t': escaped << "\\t"; break;
             default:
-                if (c < 0x20 || c == 0x2028 || c == 0x2029) 
+                if (c < 0x20)
                 {
-                    // Escape control and unsafe unicode chars as \uXXXX
+                    // Escape control characters as \uXXXX
                     escaped << "\\u"
-                            << std::uppercase
-                            << std::setw(4)
-                            << std::setfill('0')
+                            << std::hex << std::uppercase
+                            << std::setw(4) << std::setfill('0')
                             << static_cast<int>(c);
-                } 
-                else 
+                }
+                else if (c == 0xE2 && i + 2 < input.length())
+                {
+                    // Check for UTF-8 encoded U+2028 (0xE2 0x80 0xA8) and U+2029 (0xE2 0x80 0xA9)
+                    unsigned char c1 = static_cast<unsigned char>(input[i + 1]);
+                    unsigned char c2 = static_cast<unsigned char>(input[i + 2]);
+                    
+                    if (c1 == 0x80 && c2 == 0xA8)
+                    {
+                        escaped << "\\u2028";
+                        i += 2;
+                    }
+                    else if (c1 == 0x80 && c2 == 0xA9)
+                    {
+                        escaped << "\\u2029";
+                        i += 2;
+                    }
+                    else
+                    {
+                        escaped << c;
+                    }
+                }
+                else
                 {
                     escaped << c;
                 }
                 break;
         }
     }
-
+    
     return escaped.str();
 }
 
@@ -201,7 +225,7 @@ std::string EscapeJavaScriptString(const std::string& input)
  *
  * If multiple parameters exist, they are separated by commas.
  */
-MILLENNIUM const std::string JavaScript::ConstructFunctionCall(const char* plugin, const char* methodName, std::vector<JavaScript::JsFunctionConstructTypes> fnParams)
+const std::string JavaScript::ConstructFunctionCall(const char* plugin, const char* methodName, std::vector<JavaScript::JsFunctionConstructTypes> fnParams)
 {
     std::string strFunctionFormatted = fmt::format("PLUGIN_LIST['{}'].{}(", plugin, methodName);
 
@@ -260,7 +284,7 @@ MILLENNIUM const std::string JavaScript::ConstructFunctionCall(const char* plugi
  * - If the frontend is not loaded, a Python `ConnectionError` is set.
  * - If the response cannot be parsed, an error message is returned as a Python string.
  */
-MILLENNIUM PyObject* JavaScript::EvaluateFromSocket(std::string script)
+PyObject* JavaScript::EvaluateFromSocket(std::string script)
 {
     try 
     {

@@ -1,14 +1,42 @@
+# ==================================================
+#   _____ _ _ _             _                     
+#  |     |_| | |___ ___ ___|_|_ _ _____           
+#  | | | | | | | -_|   |   | | | |     |          
+#  |_|_|_|_|_|_|___|_|_|_|_|_|___|_|_|_|          
+# 
+# ==================================================
+# 
+# Copyright (c) 2025 Project Millennium
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import enum
 import os
-import traceback
 import Millennium
 
 import json
 import threading
-from typing import Callable, Dict, Any, Mapping, Optional
+from typing import Callable, Dict, Any, Optional
 
-from config.default_settings import default_config
+from config.default_settings import OnMillenniumUpdate, default_config
 from util.logger import logger
+import platform
 
 class ConfigManager:
     _instance = None
@@ -29,10 +57,11 @@ class ConfigManager:
         self._listeners = []  # type: list[Callable[[str, Any, Any], None]]
         self._defaults = {}
         self._data = {}
-        self._filename = os.path.join(Millennium.steam_path(), "ext", filename)
+        self._filename = os.path.join(os.getenv("MILLENNIUM__CONFIG_PATH"), filename)
 
         self.load_from_file()
         self.set_defaults()
+        self.verify_config()
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._lock:
@@ -53,12 +82,7 @@ class ConfigManager:
             if old_value != value:
                 current[last_key] = value
                 self._notify_listeners(key, old_value, value)
-                logger.log("set() setting changed")
                 self._auto_save(skip_propagation=skip_propagation)
-            else:
-                logger.log("old value: " + json.dumps(old_value, indent=4))
-                logger.log("new value: " + json.dumps(value, indent=4))
-                logger.log("are they equal? " + str(old_value == value))
 
     def delete(self, key: str):
         with self._lock:
@@ -117,18 +141,17 @@ class ConfigManager:
             self._notify_listeners(k, None, v)
 
     def save_to_file(self, skip_propagation: bool = False):
-        with self._lock:
-            logger.log("Saving config to file: " + self._filename + " skip_propagation: " + str(skip_propagation))
+        data_copy = self._data.copy()
+        
+        with open(self._filename, "w", encoding="utf-8") as f:
+            json.dump(data_copy, f, indent=2, default=self.custom_encoder)
 
-            with open(self._filename, "w", encoding="utf-8") as f:
-                json.dump(self._data, f, indent=2, default=self.custom_encoder)
-
-                if not skip_propagation:
-                    try:
-                        logger.log("Calling OnBackendConfigUpdate")
-                        Millennium.call_frontend_method("OnBackendConfigUpdate", params=[json.dumps(self._data, default=self.custom_encoder)])
-                    except ConnectionError as e:
-                        pass # Millennium frontend not connected
+        if not skip_propagation:
+            try:
+                Millennium.call_frontend_method("OnBackendConfigUpdate", 
+                    params=[json.dumps(data_copy, default=self.custom_encoder)])
+            except ConnectionError as e:
+                pass
 
     def update(self, update_dict: Dict[str, Any]):
         with self._lock:
@@ -140,7 +163,6 @@ class ConfigManager:
                     self._notify_listeners(k, old_value, v)
                     changed = True
             if changed:
-                logger.log("update() setting changed")
                 self._auto_save()
 
     def set_default(self, key: str, value: Any):
@@ -167,7 +189,6 @@ class ConfigManager:
                     self._notify_listeners(key, old_value, new_value)
                     changed = True
             if changed:
-                logger.log("set_all() setting changed")
                 self._auto_save(skip_propagation=skip_propagation)
 
     def custom_encoder(self, obj):
@@ -248,6 +269,26 @@ class ConfigManager:
             _merge(self._data, default_config, "")
             logger.log("Setting default settings")
             self._auto_save()
+
+    def verify_config(self):
+        logger.log("Verifying configuration settings...")
+
+        with self._lock:
+            system = platform.system()
+            if system not in ("Linux", "Darwin"):
+                logger.log("skipping verify_config on non-Linux/macOS system")
+                return 
+            
+            try:
+                on_update = self["general.onMillenniumUpdate"]
+                logger.log(f"Current onMillenniumUpdate setting: {on_update}")
+
+                if on_update == OnMillenniumUpdate.AUTO_INSTALL.value:
+                    logger.warn("OnMillenniumUpdate is set to AUTO_INSTALL on a non-Windows system. Changing to NOTIFY.")
+                    self.set("general.onMillenniumUpdate", OnMillenniumUpdate.NOTIFY.value)
+
+            except KeyError as e:
+                logger.error(f"KeyError in verify_config: {e}")
 
 # Helper function to get the singleton instance easily
 def get_config() -> ConfigManager:

@@ -37,7 +37,7 @@
 #include "locals.h"
 #include <condition_variable>
 #include <atomic>
-#include "log.h"
+#include "internal_logger.h"
 #include <filesystem>
 #include "env.h"
 #include <optional>
@@ -63,6 +63,10 @@ static const std::string pythonPath     = pythonModulesBaseDir.generic_string();
 static const std::string pythonLibs     = (pythonModulesBaseDir / "python311.zip").generic_string();
 static const std::string pythonUserLibs = (pythonModulesBaseDir / "Lib" / "site-packages").generic_string();
 #elif __linux__
+static const std::string pythonPath     = GetEnv("LIBPYTHON_BUILTIN_MODULES_PATH");
+static const std::string pythonLibs     = GetEnv("LIBPYTHON_BUILTIN_MODULES_DLL_PATH");
+static const std::string pythonUserLibs = (pythonModulesBaseDir / "lib" / "python3.11" / "site-packages").generic_string();
+#elif __APPLE__
 static const std::string pythonPath     = GetEnv("LIBPYTHON_BUILTIN_MODULES_PATH");
 static const std::string pythonLibs     = GetEnv("LIBPYTHON_BUILTIN_MODULES_DLL_PATH");
 static const std::string pythonUserLibs = (pythonModulesBaseDir / "lib" / "python3.11" / "site-packages").generic_string();
