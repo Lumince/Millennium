@@ -36,7 +36,7 @@
 static bool ShouldLog()
 {
     static StartupParameters startupParams;
-    return startupParams.HasArgument("-dev");
+    return startupParams.HasArgument("-dev1");
 }
 
 inline void Print(const std::string& msg)

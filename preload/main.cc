@@ -194,7 +194,7 @@ void AllocateDevConsole()
 {
     std::unique_ptr<StartupParameters> startupParams = std::make_unique<StartupParameters>();
 
-    if (((GetAsyncKeyState(VK_MENU) & 0x8000) && (GetAsyncKeyState('M') & 0x8000)) || startupParams->HasArgument("-dev"))
+    if (((GetAsyncKeyState(VK_MENU) & 0x8000) && (GetAsyncKeyState('M') & 0x8000)) || startupParams->HasArgument("-dev1"))
     {
         (void)static_cast<bool>(AllocConsole());
 
