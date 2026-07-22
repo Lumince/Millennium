@@ -289,7 +289,7 @@ VOID Win32_AttachMillennium(VOID)
 
     uninitialize_steam_hooks();
     /** Deallocate the developer console */
-    if (CommandLineArguments::has_argument("-dev")) {
+    if (CommandLineArguments::has_argument("-dev1")) {
         FreeConsole();
     }
 }
