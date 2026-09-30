@@ -228,7 +228,7 @@ void millennium_logger::print(std::string type, const std::string& message, std:
 millennium_logger::millennium_logger()
 {
 #ifdef _WIN32
-    this->m_bIsConsoleEnabled = ((GetAsyncKeyState(VK_MENU) & 0x8000) && (GetAsyncKeyState('M') & 0x8000)) || CommandLineArguments::has_argument("-dev");
+    this->m_bIsConsoleEnabled = ((GetAsyncKeyState(VK_MENU) & 0x8000) && (GetAsyncKeyState('M') & 0x8000)) || CommandLineArguments::has_argument("-dev1");
 
     if (m_bIsConsoleEnabled) {
         (void)static_cast<bool>(AllocConsole());

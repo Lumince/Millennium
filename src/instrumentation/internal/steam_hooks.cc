@@ -284,7 +284,7 @@ const char* Plat_HookedCreateSimpleProcess(const char* cmd, bool* matched = null
         millennium_lifecycle::get().backends_loaded.wait();
     }
 
-    bool is_developer_mode = CommandLineArguments::has_argument("-dev");
+    bool is_developer_mode = CommandLineArguments::has_argument("-dev1");
 
     cmd_line.ensure_param("--enable-unsafe-extension-debugging");
     cmd_line.ensure_param("--disable-blink-features", "AutomationControlled");
@@ -711,7 +711,7 @@ bool initialize_steam_hooks()
     logger.log("Steam UI loaded in {} ms, continuing Millennium startup...", end_time);
 
     /** only hook if developer mode is enabled */
-    if (CommandLineArguments::has_argument("-dev")) {
+    if (CommandLineArguments::has_argument("-dev1")) {
         g_rdcw_hook = snare_inline_new(reinterpret_cast<void*>(&ReadDirectoryChangesW), reinterpret_cast<void*>(&hooked_read_directory_changes_w));
         if (g_rdcw_hook) snare_inline_install(g_rdcw_hook);
     }

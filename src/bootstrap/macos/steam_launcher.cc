@@ -418,7 +418,7 @@ static void start_browser_context_probe()
 
 static void configure_debug_environment(int argc, char** argv)
 {
-    const bool is_dev_mode = has_argument(argc, argv, "-dev");
+    const bool is_dev_mode = has_argument(argc, argv, "-dev1");
     const char* explicit_port = get_argument_value(argc, argv, "-devtools-port");
     if (explicit_port && explicit_port[0] != '\0') {
         setenv(kDebugPortEnv, explicit_port, 1);

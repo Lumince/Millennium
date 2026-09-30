@@ -581,7 +581,7 @@ std::unique_ptr<PluginProcess> spawn_plugin_process(const std::string& plugin_na
         PROCESS_INFORMATION pi{};
 
         DWORD creation_flags = CREATE_SUSPENDED;
-        if (!CommandLineArguments::has_argument("-dev")) creation_flags |= CREATE_NO_WINDOW;
+        if (!CommandLineArguments::has_argument("-dev1")) creation_flags |= CREATE_NO_WINDOW;
 
         if (!CreateProcessA(nullptr, const_cast<char*>(cmd.c_str()), nullptr, nullptr, FALSE, creation_flags, nullptr, nullptr, &si, &pi)) {
             LOG_ERROR("[spawn] CreateProcess failed for plugin '{}' (error: {}, cmd: {})", plugin_name, GetLastError(), cmd);
